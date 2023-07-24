@@ -73,7 +73,9 @@ fn setup(
             ));
         }
     }
-    commands.spawn(Board::new(GRID_SIZE));
+    let board = Board::new(GRID_SIZE);
+    println!("Beginning game with {} bombs", board.num_bombs_left());
+    commands.spawn(board);
 }
 
 #[derive(Component)]
@@ -96,6 +98,7 @@ fn sprite_sheet_index(state: TileState) -> usize {
     match state {
         TileState::Covered => 0,
         TileState::Flagged => 1,
+        TileState::ExplodedBomb => 2,
         TileState::UncoveredBomb => 2,
         TileState::UncoveredSafe(n) => 3 + n as usize,
     }
@@ -110,6 +113,7 @@ fn check_restart(
         let mut board = board_query.get_single_mut().unwrap();
         board.reset();
         next_app_state.set(GameState::Game);
+        println!("Beginning game with {} bombs", board.num_bombs_left());
     }
 }
 
@@ -135,18 +139,28 @@ fn check_action(
                 action_type,
             };
             let mut board = board_query.get_single_mut().unwrap();
-            let result = board.apply_action(action);
-            match result {
-                ActionResult::Win => {
-                    println!("You won!");
-                    next_app_state.set(GameState::GameOver);
-                }
-                ActionResult::Lose => {
-                    println!("You lost...");
-                    next_app_state.set(GameState::GameOver);
-                }
-                ActionResult::Continue => {}
-            }
+            complete_action(&mut board, action, next_app_state);
+        }
+    }
+}
+
+fn complete_action(
+    board: &mut Board,
+    action: Action,
+    mut next_app_state: ResMut<NextState<GameState>>,
+) {
+    let result = board.apply_action(action);
+    match result {
+        ActionResult::Win => {
+            println!("You won!");
+            next_app_state.set(GameState::GameOver);
+        }
+        ActionResult::Lose => {
+            println!("You lost...");
+            next_app_state.set(GameState::GameOver);
+        }
+        ActionResult::Continue => {
+            println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
 }
