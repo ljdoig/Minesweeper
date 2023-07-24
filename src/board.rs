@@ -4,14 +4,14 @@ use rand::seq::index::sample;
 const NUM_BOMBS: usize = 99;
 pub const GRID_SIZE: (usize, usize) = (30, 16);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Action {
     pub col: usize,
     pub row: usize,
     pub action_type: ActionType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ActionType {
     Flag,
     Uncover,

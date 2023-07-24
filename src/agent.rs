@@ -68,15 +68,13 @@ pub fn get_actions(mut board: Board) -> Vec<Action> {
             }
         }
     }
-    deduplicate_tiles(output)
+    deduplicate(output)
 }
 
-fn deduplicate_tiles(output: Vec<Action>) -> Vec<Action> {
+fn deduplicate(output: Vec<Action>) -> Vec<Action> {
     let mut deduplicated = vec![];
     for action in output {
-        if !(&deduplicated).into_iter().any(|prev_action: &Action| {
-            (prev_action.row, prev_action.col) == (action.row, action.col)
-        }) {
+        if !(&deduplicated).into_iter().any(|x: &Action| x == &action) {
             deduplicated.push(action);
         }
     }

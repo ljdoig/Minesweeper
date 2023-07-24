@@ -150,12 +150,16 @@ fn check_action(
     }
     // use bot
     if keys.just_pressed(KeyCode::Space) {
-        for action in agent::get_actions(board.clone()) {
-            let result =
-                complete_action(&mut board, action, &mut next_app_state);
-            if result != ActionResult::Continue {
-                break;
+        let mut actions = agent::get_actions(board.clone());
+        while actions.len() > 0 {
+            for action in actions {
+                let result =
+                    complete_action(&mut board, action, &mut next_app_state);
+                if result != ActionResult::Continue {
+                    return;
+                }
             }
+            actions = agent::get_actions(board.clone());
         }
     }
 }
