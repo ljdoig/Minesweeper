@@ -129,7 +129,7 @@ impl Board {
     }
 
     fn uncover_first(&mut self, col: usize, row: usize) {
-        while self.num_bombs_around(col, row) > 0 {
+        while self.num_bombs_around(col, row) > 0 || self.bomb(col, row) {
             self.sample_bombs();
         }
         self.uncover_safe(col, row);

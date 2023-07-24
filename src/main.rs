@@ -139,10 +139,9 @@ fn check_action(
             None
         };
         if let Some(action_type) = action_type {
-            let (col, row) = (position.as_uvec2() / TILE_SIZE as u32).into();
             let action = Action {
-                col: col as usize,
-                row: row as usize,
+                col: (position.x / TILE_SIZE as f32) as usize,
+                row: (position.y / TILE_SIZE as f32) as usize,
                 action_type,
             };
             complete_action(&mut board, action, &mut next_app_state);
