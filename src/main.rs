@@ -1,11 +1,16 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 
-mod board;
+pub mod board;
 use board::*;
 
-const WINDOW_SIZE: (f32, f32) = (800.0, 800.0);
+mod agent;
+
+const WINDOW_HEIGHT: f32 = 750.0;
 const TILE_SPRITE_SIZE: f32 = 128.0;
+
+const ASPECT_RATIO: f32 = GRID_SIZE.0 as f32 / GRID_SIZE.1 as f32;
+const WINDOW_SIZE: (f32, f32) = (WINDOW_HEIGHT * ASPECT_RATIO, WINDOW_HEIGHT);
 const TILE_SIZE: f32 = WINDOW_SIZE.1 as f32 / GRID_SIZE.1 as f32;
 
 fn main() {
@@ -119,10 +124,12 @@ fn check_restart(
 
 fn check_action(
     buttons: Res<Input<MouseButton>>,
+    keys: Res<Input<KeyCode>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
 ) {
+    let mut board = board_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
         let action_type = if buttons.just_pressed(MouseButton::Left) {
             Some(ActionType::Uncover)
@@ -138,8 +145,17 @@ fn check_action(
                 row: row as usize,
                 action_type,
             };
-            let mut board = board_query.get_single_mut().unwrap();
-            complete_action(&mut board, action, next_app_state);
+            complete_action(&mut board, action, &mut next_app_state);
+        }
+    }
+    // use bot
+    if keys.just_pressed(KeyCode::Space) {
+        for action in agent::get_actions(board.clone()) {
+            let result =
+                complete_action(&mut board, action, &mut next_app_state);
+            if result != ActionResult::Continue {
+                break;
+            }
         }
     }
 }
@@ -147,8 +163,8 @@ fn check_action(
 fn complete_action(
     board: &mut Board,
     action: Action,
-    mut next_app_state: ResMut<NextState<GameState>>,
-) {
+    next_app_state: &mut ResMut<NextState<GameState>>,
+) -> ActionResult {
     let result = board.apply_action(action);
     match result {
         ActionResult::Win => {
@@ -163,6 +179,7 @@ fn complete_action(
             println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
+    result
 }
 
 fn sync_board_with_tile_sprites(

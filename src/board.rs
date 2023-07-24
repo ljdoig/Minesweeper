@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use rand::seq::index::sample;
 
-const NUM_BOMBS: usize = 10;
-pub const GRID_SIZE: (usize, usize) = (10, 10);
+const NUM_BOMBS: usize = 99;
+pub const GRID_SIZE: (usize, usize) = (30, 16);
 
 #[derive(Debug)]
 pub struct Action {
@@ -17,6 +17,7 @@ pub enum ActionType {
     Uncover,
 }
 
+#[derive(PartialEq)]
 pub enum ActionResult {
     Win,
     Lose,
@@ -32,11 +33,11 @@ pub enum TileState {
     UncoveredSafe(u8),
 }
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct Board {
-    width: usize,
-    height: usize,
-    tile_states: Vec<TileState>,
+    pub width: usize,
+    pub height: usize,
+    pub tile_states: Vec<TileState>,
     bombs: Vec<bool>,
     num_bombs_left: usize,
     first_uncovered: bool,
@@ -102,7 +103,11 @@ impl Board {
         col < self.width && row < self.height
     }
 
-    fn neighbours(&mut self, col: usize, row: usize) -> Vec<(usize, usize)> {
+    pub fn neighbours(
+        &mut self,
+        col: usize,
+        row: usize,
+    ) -> Vec<(usize, usize)> {
         let mut neighbours = vec![];
         for neighbour_col in col.saturating_sub(1)..=col + 1 {
             for neighbour_row in row.saturating_sub(1)..=row + 1 {
