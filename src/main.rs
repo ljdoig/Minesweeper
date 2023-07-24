@@ -5,7 +5,6 @@ mod board;
 use board::*;
 
 const WINDOW_SIZE: (f32, f32) = (800.0, 800.0);
-const GRID_SIZE: (usize, usize) = (10, 10);
 const TILE_SPRITE_SIZE: f32 = 128.0;
 const TILE_SIZE: f32 = WINDOW_SIZE.1 as f32 / GRID_SIZE.1 as f32;
 
@@ -22,27 +21,19 @@ fn main() {
                 ..default()
             },
         ))
+        .add_state::<GameState>()
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_esc)
-        .add_systems(Update, mouse_button_input)
+        .add_systems(Update, check_action.run_if(in_state(GameState::Game)))
         .add_systems(Update, sync_board_with_tile_sprites)
         .run();
 }
 
-#[derive(Component)]
-pub struct TileSprite {
-    pub col: usize,
-    pub row: usize,
-}
-
-impl TileSprite {
-    fn screen_pos(&self) -> Vec2 {
-        let translation_x =
-            TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
-        let translation_y =
-            TILE_SIZE * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0);
-        Vec2::new(translation_x, translation_y)
-    }
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    Game,
+    GameOver,
 }
 
 fn setup(
@@ -84,6 +75,22 @@ fn setup(
     commands.spawn(Board::new(GRID_SIZE));
 }
 
+#[derive(Component)]
+pub struct TileSprite {
+    pub col: usize,
+    pub row: usize,
+}
+
+impl TileSprite {
+    fn screen_pos(&self) -> Vec2 {
+        let translation_x =
+            TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
+        let translation_y =
+            TILE_SIZE * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0);
+        Vec2::new(translation_x, translation_y)
+    }
+}
+
 fn sprite_sheet_index(state: TileState) -> usize {
     match state {
         TileState::Covered => 0,
@@ -93,30 +100,40 @@ fn sprite_sheet_index(state: TileState) -> usize {
     }
 }
 
-fn mouse_button_input(
+fn check_action(
     buttons: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut board_query: Query<&mut Board>,
+    mut next_app_state: ResMut<NextState<GameState>>,
 ) {
-    let mut board = board_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
-        let (col, row) = (position.as_uvec2() / TILE_SIZE as u32).into();
-        let (col, row) = (col as usize, row as usize);
-        if buttons.just_pressed(MouseButton::Left) {
+        let action_type = if buttons.just_pressed(MouseButton::Left) {
+            Some(ActionType::Uncover)
+        } else if buttons.just_pressed(MouseButton::Right) {
+            Some(ActionType::Flag)
+        } else {
+            None
+        };
+        if let Some(action_type) = action_type {
+            let (col, row) = (position.as_uvec2() / TILE_SIZE as u32).into();
             let action = Action {
-                col,
-                row,
-                action_type: ActionType::Uncover,
+                col: col as usize,
+                row: row as usize,
+                action_type,
             };
-            board.apply_action(action);
-        }
-        if buttons.just_pressed(MouseButton::Right) {
-            let action = Action {
-                col,
-                row,
-                action_type: ActionType::Flag,
-            };
-            board.apply_action(action);
+            let mut board = board_query.get_single_mut().unwrap();
+            let result = board.apply_action(action);
+            match result {
+                ActionResult::Win => {
+                    println!("You won!");
+                    next_app_state.set(GameState::GameOver);
+                }
+                ActionResult::Lose => {
+                    println!("You lost...");
+                    next_app_state.set(GameState::GameOver);
+                }
+                ActionResult::Continue => {}
+            }
         }
     }
 }
