@@ -42,7 +42,25 @@ pub struct Board {
 
 impl Board {
     pub fn new((width, height): (usize, usize)) -> Board {
-        let tile_states = vec![TileState::Covered; width * height];
+        let mut board = Board {
+            width,
+            height,
+            tile_states: vec![],
+            bombs: vec![],
+            num_bombs_left: 0,
+        };
+        board.reset();
+        board
+    }
+
+    pub fn reset(&mut self) {
+        println!("Beginning game with {} bombs", NUM_BOMBS);
+        self.tile_states = vec![TileState::Covered; self.width * self.height];
+        self.bombs = Self::sample_bombs((self.width, self.height));
+        self.num_bombs_left = NUM_BOMBS;
+    }
+
+    fn sample_bombs((width, height): (usize, usize)) -> Vec<bool> {
         let mut bombs = vec![false; width * height];
 
         // Randomly sample grid tiles without replacement
@@ -54,13 +72,7 @@ impl Board {
             bombs[index] = true;
         }
 
-        Board {
-            width,
-            height,
-            tile_states,
-            bombs,
-            num_bombs_left: NUM_BOMBS,
-        }
+        bombs
     }
 
     fn index(&self, col: usize, row: usize) -> usize {

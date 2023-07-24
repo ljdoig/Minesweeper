@@ -24,6 +24,7 @@ fn main() {
         .add_state::<GameState>()
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_esc)
+        .add_systems(Update, check_restart)
         .add_systems(Update, check_action.run_if(in_state(GameState::Game)))
         .add_systems(Update, sync_board_with_tile_sprites)
         .run();
@@ -97,6 +98,18 @@ fn sprite_sheet_index(state: TileState) -> usize {
         TileState::Flagged => 1,
         TileState::UncoveredBomb => 2,
         TileState::UncoveredSafe(n) => 3 + n as usize,
+    }
+}
+
+fn check_restart(
+    keys: Res<Input<KeyCode>>,
+    mut board_query: Query<&mut Board>,
+    mut next_app_state: ResMut<NextState<GameState>>,
+) {
+    if keys.just_pressed(KeyCode::Return) {
+        let mut board = board_query.get_single_mut().unwrap();
+        board.reset();
+        next_app_state.set(GameState::Game);
     }
 }
 
