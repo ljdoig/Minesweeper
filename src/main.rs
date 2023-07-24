@@ -54,7 +54,7 @@ fn setup(
         texture_handle,
         Vec2::splat(TILE_SPRITE_SIZE),
         4,
-        3,
+        4,
         None,
         None,
     );
@@ -103,9 +103,10 @@ fn sprite_sheet_index(state: TileState) -> usize {
     match state {
         TileState::Covered => 0,
         TileState::Flagged => 1,
-        TileState::ExplodedBomb => 2,
+        TileState::ExplodedBomb => 14,
         TileState::UncoveredBomb => 2,
         TileState::UncoveredSafe(n) => 3 + n as usize,
+        TileState::Misflagged => 13,
     }
 }
 

@@ -68,6 +68,7 @@ pub fn get_actions(mut board: Board) -> Vec<Action> {
             }
         }
     }
+    if output.len() == 0 {}
     deduplicate(output)
 }
 

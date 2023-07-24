@@ -31,6 +31,7 @@ pub enum TileState {
     ExplodedBomb,
     UncoveredBomb,
     UncoveredSafe(u8),
+    Misflagged,
 }
 
 #[derive(Component, Clone)]
@@ -147,11 +148,13 @@ impl Board {
         }
     }
 
-    fn uncover_bombs(&mut self, col: usize, row: usize) {
+    fn uncover_loss(&mut self, col: usize, row: usize) {
         for col in 0..self.width {
             for row in 0..self.height {
                 if self.bomb(col, row) {
                     self.set(col, row, TileState::UncoveredBomb);
+                } else if self.tile_state(col, row) == TileState::Flagged {
+                    self.set(col, row, TileState::Misflagged);
                 }
             }
         }
@@ -211,7 +214,7 @@ impl Board {
                     self.uncover_first(col, row);
                     self.first_uncovered = true;
                 } else if self.bombs[self.index(col, row)] {
-                    self.uncover_bombs(col, row);
+                    self.uncover_loss(col, row);
                     return ActionResult::Lose;
                 } else {
                     self.uncover_safe(col, row);
