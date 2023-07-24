@@ -151,9 +151,10 @@ impl Board {
     fn uncover_loss(&mut self, col: usize, row: usize) {
         for col in 0..self.width {
             for row in 0..self.height {
-                if self.bomb(col, row) {
+                let flagged = self.tile_state(col, row) == TileState::Flagged;
+                if self.bomb(col, row) && !flagged {
                     self.set(col, row, TileState::UncoveredBomb);
-                } else if self.tile_state(col, row) == TileState::Flagged {
+                } else if !self.bomb(col, row) && flagged {
                     self.set(col, row, TileState::Misflagged);
                 }
             }
