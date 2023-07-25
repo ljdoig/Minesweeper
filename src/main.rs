@@ -11,7 +11,7 @@ const TILE_SPRITE_SIZE: f32 = 128.0;
 
 const ASPECT_RATIO: f32 = GRID_SIZE.0 as f32 / GRID_SIZE.1 as f32;
 const WINDOW_SIZE: (f32, f32) = (WINDOW_HEIGHT * ASPECT_RATIO, WINDOW_HEIGHT);
-const TILE_SIZE: f32 = WINDOW_SIZE.1 as f32 / GRID_SIZE.1 as f32;
+const TILE_SIZE: f32 = WINDOW_SIZE.1 / GRID_SIZE.1 as f32;
 
 fn main() {
     App::new()
@@ -31,7 +31,6 @@ fn main() {
         .add_systems(Update, close_on_esc)
         .add_systems(Update, check_restart)
         .add_systems(Update, check_action.run_if(in_state(GameState::Game)))
-        .add_systems(Update, sync_board_with_tile_sprites)
         .run();
 }
 
@@ -81,6 +80,7 @@ fn setup(
     let board = Board::new(GRID_SIZE);
     println!("Beginning game with {} bombs", board.num_bombs_left());
     commands.spawn(board);
+    // commands.spawn(Agent {});
 }
 
 #[derive(Component)]
@@ -129,6 +129,7 @@ fn check_action(
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
+    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) {
     let mut board = board_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
@@ -141,20 +142,29 @@ fn check_action(
         };
         if let Some(action_type) = action_type {
             let action = Action {
-                col: (position.x / TILE_SIZE as f32) as usize,
-                row: (position.y / TILE_SIZE as f32) as usize,
+                col: (position.x / TILE_SIZE) as usize,
+                row: (position.y / TILE_SIZE) as usize,
                 action_type,
             };
-            complete_action(&mut board, action, &mut next_app_state);
+            complete_action(
+                &mut board,
+                action,
+                &mut next_app_state,
+                &mut tile_sprites_query,
+            );
         }
     }
     // use bot
     if keys.just_pressed(KeyCode::Space) {
         let mut actions = agent::get_actions(board.clone());
-        while actions.len() > 0 {
+        while !actions.is_empty() {
             for action in actions {
-                let result =
-                    complete_action(&mut board, action, &mut next_app_state);
+                let result = complete_action(
+                    &mut board,
+                    action,
+                    &mut next_app_state,
+                    &mut tile_sprites_query,
+                );
                 if result != ActionResult::Continue {
                     return;
                 }
@@ -168,6 +178,7 @@ fn complete_action(
     board: &mut Board,
     action: Action,
     next_app_state: &mut ResMut<NextState<GameState>>,
+    mut tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) -> ActionResult {
     let result = board.apply_action(action);
     match result {
@@ -183,18 +194,17 @@ fn complete_action(
             println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
+    sync_board_with_tile_sprites(board, &mut tile_sprites_query);
     result
 }
 
 fn sync_board_with_tile_sprites(
-    board_query: Query<&Board>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    board: &mut Board,
+    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) {
-    if let Ok(board) = board_query.get_single() {
-        for (mut sprite, TileSprite { col, row }) in &mut tile_sprites_query {
-            let tile_state = board.tile_state(*col, *row);
-            let index = sprite_sheet_index(tile_state);
-            sprite.index = index;
-        }
+    for (mut sprite, TileSprite { col, row }) in tile_sprites_query {
+        let tile_state = board.tile_state(*col, *row);
+        let index = sprite_sheet_index(tile_state);
+        sprite.index = index;
     }
 }
