@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use rand::seq::index::sample;
 
-const NUM_BOMBS: usize = 99;
-pub const GRID_SIZE: (usize, usize) = (30, 16);
+const NUM_BOMBS: usize = 9;
+pub const GRID_SIZE: (usize, usize) = (10, 10);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -40,7 +40,7 @@ pub struct Board {
     pub height: usize,
     pub tile_states: Vec<TileState>,
     bombs: Vec<bool>,
-    num_bombs_left: usize,
+    num_bombs_left: isize,
     first_uncovered: bool,
 }
 
@@ -61,7 +61,7 @@ impl Board {
     pub fn reset(&mut self) {
         self.tile_states = vec![TileState::Covered; self.width * self.height];
         self.sample_bombs();
-        self.num_bombs_left = NUM_BOMBS;
+        self.num_bombs_left = NUM_BOMBS as isize;
         self.first_uncovered = false;
     }
 
@@ -69,7 +69,7 @@ impl Board {
         self.tile_states[self.index(col, row)]
     }
 
-    pub fn num_bombs_left(&self) -> usize {
+    pub fn num_bombs_left(&self) -> isize {
         self.num_bombs_left
     }
 
@@ -77,7 +77,8 @@ impl Board {
         self.bombs = vec![false; self.width * self.height];
 
         // Randomly sample grid tiles without replacement
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng();
+        let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(30);
         let sample =
             sample(&mut rng, self.width * self.height, NUM_BOMBS).into_vec();
 

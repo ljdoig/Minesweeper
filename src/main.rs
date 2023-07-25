@@ -114,12 +114,14 @@ fn check_restart(
     keys: Res<Input<KeyCode>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
+    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) {
     if keys.just_pressed(KeyCode::Return) {
         let mut board = board_query.get_single_mut().unwrap();
         board.reset();
         next_app_state.set(GameState::Game);
         println!("Beginning game with {} bombs", board.num_bombs_left());
+        sync_board_with_tile_sprites(&mut board, &mut tile_sprites_query);
     }
 }
 
@@ -178,7 +180,7 @@ fn complete_action(
     board: &mut Board,
     action: Action,
     next_app_state: &mut ResMut<NextState<GameState>>,
-    mut tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) -> ActionResult {
     let result = board.apply_action(action);
     match result {
@@ -194,7 +196,7 @@ fn complete_action(
             println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
-    sync_board_with_tile_sprites(board, &mut tile_sprites_query);
+    sync_board_with_tile_sprites(board, tile_sprites_query);
     result
 }
 
