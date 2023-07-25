@@ -1,4 +1,6 @@
 use crate::board::*;
+use itertools::Itertools;
+use std::collections::HashMap;
 
 fn num_bombs_around(board: &mut Board, col: usize, row: usize) -> u8 {
     board
@@ -8,19 +10,24 @@ fn num_bombs_around(board: &mut Board, col: usize, row: usize) -> u8 {
         .count() as u8
 }
 
-fn num_covered_around(board: &mut Board, col: usize, row: usize) -> u8 {
+fn covered_neighbours(
+    board: &mut Board,
+    col: usize,
+    row: usize,
+) -> Vec<(usize, usize)> {
     board
         .neighbours(col, row)
         .into_iter()
         .filter(|(col, row)| board.tile_state(*col, *row) == TileState::Covered)
-        .count() as u8
+        .collect()
+}
+
+fn num_covered_around(board: &mut Board, col: usize, row: usize) -> u8 {
+    covered_neighbours(board, col, row).len() as u8
 }
 
 pub fn get_actions(mut board: Board) -> Vec<Action> {
-    if (&board.tile_states)
-        .into_iter()
-        .all(|&x| x == TileState::Covered)
-    {
+    if board.tile_states.iter().all(|&x| x == TileState::Covered) {
         let action = Action {
             col: board.width / 2,
             row: board.height / 2,
@@ -37,12 +44,8 @@ pub fn get_actions(mut board: Board) -> Vec<Action> {
                 let num_covered = num_covered_around(&mut board, col, row);
                 // uncover all neighbours
                 if num_bombs == n {
-                    board
-                        .neighbours(col, row)
+                    covered_neighbours(&mut board, col, row)
                         .into_iter()
-                        .filter(|(col, row)| {
-                            board.tile_state(*col, *row) == TileState::Covered
-                        })
                         .map(|(col, row)| Action {
                             col,
                             row,
@@ -68,8 +71,27 @@ pub fn get_actions(mut board: Board) -> Vec<Action> {
             }
         }
     }
-    if output.len() == 0 {}
+
     deduplicate(output)
+}
+
+#[derive(Hash, Debug, Eq, PartialEq)]
+struct Subset(Vec<(usize, usize)>);
+
+impl Subset {
+    fn new(mut elts: Vec<(usize, usize)>) -> Subset {
+        elts.sort();
+        Subset(elts)
+    }
+
+    fn subsets(elts: Vec<(usize, usize)>) -> Vec<Subset> {
+        (2..=elts.len())
+            .flat_map(|k| elts.iter().combinations(k))
+            .map(|combination| {
+                Subset::new(combination.iter().cloned().cloned().collect())
+            })
+            .collect()
+    }
 }
 
 fn deduplicate(output: Vec<Action>) -> Vec<Action> {
