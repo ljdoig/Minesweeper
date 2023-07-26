@@ -1,5 +1,6 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
+use bevy_framepace;
 
 pub mod board;
 use board::*;
@@ -15,16 +16,19 @@ const TILE_SIZE: f32 = WINDOW_SIZE.1 / GRID_SIZE.1 as f32;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()).set(
-            WindowPlugin {
-                primary_window: Some(Window {
-                    resolution: [WINDOW_SIZE.0, WINDOW_SIZE.1].into(),
-                    title: "Minesweeper".to_string(),
-                    resizable: false,
+        .add_plugins((
+            DefaultPlugins.set(ImagePlugin::default_nearest()).set(
+                WindowPlugin {
+                    primary_window: Some(Window {
+                        resolution: [WINDOW_SIZE.0, WINDOW_SIZE.1].into(),
+                        title: "Minesweeper".to_string(),
+                        resizable: false,
+                        ..default()
+                    }),
                     ..default()
-                }),
-                ..default()
-            },
+                },
+            ),
+            bevy_framepace::FramepacePlugin,
         ))
         .add_state::<GameState>()
         .add_systems(Startup, setup)
@@ -45,7 +49,9 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    mut settings: ResMut<bevy_framepace::FramepaceSettings>,
 ) {
+    settings.limiter = bevy_framepace::Limiter::from_framerate(20.0);
     commands.spawn(Camera2dBundle::default());
 
     let texture_handle = asset_server.load("minesweeper_tiles.png");
