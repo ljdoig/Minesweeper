@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand::seq::index::sample;
+use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
 const NUM_BOMBS: usize = 99;
 pub const GRID_SIZE: (usize, usize) = (30, 16);
@@ -42,6 +42,7 @@ pub struct Board {
     bombs: Vec<bool>,
     num_bombs_left: isize,
     first_uncovered: bool,
+    seed: u64,
 }
 
 impl Board {
@@ -53,6 +54,7 @@ impl Board {
             bombs: vec![],
             num_bombs_left: 0,
             first_uncovered: false,
+            seed: 0,
         };
         board.reset();
         board
@@ -76,9 +78,10 @@ impl Board {
     fn sample_bombs(&mut self) {
         self.bombs = vec![false; self.width * self.height];
 
+        // Set board seed randomly, but store it for revisiting useful instances
+        self.seed = rand::thread_rng().gen();
+        let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
-        let mut rng = rand::thread_rng();
-        // let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(30);
         let sample =
             sample(&mut rng, self.width * self.height, NUM_BOMBS).into_vec();
 
@@ -105,11 +108,7 @@ impl Board {
         col < self.width && row < self.height
     }
 
-    pub fn neighbours(
-        &mut self,
-        col: usize,
-        row: usize,
-    ) -> Vec<(usize, usize)> {
+    pub fn neighbours(&self, col: usize, row: usize) -> Vec<(usize, usize)> {
         let mut neighbours = vec![];
         for neighbour_col in col.saturating_sub(1)..=col + 1 {
             for neighbour_row in row.saturating_sub(1)..=row + 1 {
@@ -134,6 +133,7 @@ impl Board {
         while self.num_bombs_around(col, row) > 0 || self.bomb(col, row) {
             self.sample_bombs();
         }
+        println!("Board seed: {}", self.seed);
         self.uncover_safe(col, row);
     }
 

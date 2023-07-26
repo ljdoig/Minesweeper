@@ -163,8 +163,9 @@ fn check_action(
         }
     }
     // use bot
+
     if keys.just_pressed(KeyCode::Space) {
-        let mut actions = agent::get_actions(board.clone());
+        let mut actions = agent::get_all_actions(&board);
         while !actions.is_empty() {
             for action in actions {
                 let result = complete_action(
@@ -177,7 +178,35 @@ fn check_action(
                     return;
                 }
             }
-            actions = agent::get_actions(board.clone());
+            actions = agent::get_all_actions(&board);
+        }
+    }
+    if keys.just_pressed(KeyCode::Key1) {
+        let mut actions = agent::get_trivial_actions(&board);
+        while !actions.is_empty() {
+            for action in actions {
+                let result = complete_action(
+                    &mut board,
+                    action,
+                    &mut next_app_state,
+                    &mut tile_sprites_query,
+                );
+                if result != ActionResult::Continue {
+                    return;
+                }
+            }
+            actions = agent::get_trivial_actions(&board);
+        }
+    }
+    if keys.just_pressed(KeyCode::Key2) {
+        let mut actions = agent::get_non_trivial_actions(&board);
+        if let Some(action) = actions.pop() {
+            complete_action(
+                &mut board,
+                action,
+                &mut next_app_state,
+                &mut tile_sprites_query,
+            );
         }
     }
 }
