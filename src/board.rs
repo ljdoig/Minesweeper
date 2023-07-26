@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use rand::seq::index::sample;
 
-const NUM_BOMBS: usize = 9;
-pub const GRID_SIZE: (usize, usize) = (10, 10);
+const NUM_BOMBS: usize = 99;
+pub const GRID_SIZE: (usize, usize) = (30, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -77,8 +77,8 @@ impl Board {
         self.bombs = vec![false; self.width * self.height];
 
         // Randomly sample grid tiles without replacement
-        // let mut rng = rand::thread_rng();
-        let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(30);
+        let mut rng = rand::thread_rng();
+        // let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(30);
         let sample =
             sample(&mut rng, self.width * self.height, NUM_BOMBS).into_vec();
 
