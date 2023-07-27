@@ -1,6 +1,5 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
-use bevy_framepace;
 
 pub mod board;
 use board::*;

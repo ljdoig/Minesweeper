@@ -80,6 +80,10 @@ impl Board {
 
         // Set board seed randomly, but store it for revisiting useful instances
         self.seed = rand::thread_rng().gen();
+
+        // hard!
+        // self.seed = 17303725714698196549;
+
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
         let sample =
