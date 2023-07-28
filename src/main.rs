@@ -121,9 +121,11 @@ fn check_restart(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) {
-    if keys.just_pressed(KeyCode::Return) {
+    let replay = keys.just_pressed(KeyCode::R);
+    if keys.just_pressed(KeyCode::Return) || replay {
         let mut board = board_query.get_single_mut().unwrap();
-        board.reset();
+        let seed = replay.then_some(board.seed());
+        board.reset(seed);
         next_app_state.set(GameState::Game);
         println!("Beginning game with {} bombs", board.num_bombs_left());
         sync_board_with_tile_sprites(&mut board, &mut tile_sprites_query);
@@ -180,8 +182,14 @@ fn check_action(
             actions = agent::get_all_actions(&board);
         }
     }
-    if keys.just_pressed(KeyCode::Key1) {
-        let mut actions = agent::get_trivial_actions(&board);
+    let trivial = keys.just_pressed(KeyCode::Key1);
+    let non_trivial = keys.just_pressed(KeyCode::Key2);
+    if trivial || non_trivial {
+        let mut actions = if trivial {
+            agent::get_trivial_actions(&board)
+        } else {
+            agent::get_non_trivial_actions(&board)
+        };
         while !actions.is_empty() {
             for action in actions {
                 let result = complete_action(
@@ -194,10 +202,14 @@ fn check_action(
                     return;
                 }
             }
-            actions = agent::get_trivial_actions(&board);
+            actions = if trivial {
+                agent::get_trivial_actions(&board)
+            } else {
+                break;
+            };
         }
     }
-    if keys.just_pressed(KeyCode::Key2) {
+    if keys.just_pressed(KeyCode::Key3) {
         let mut actions = agent::get_non_trivial_actions(&board);
         if let Some(action) = actions.pop() {
             complete_action(

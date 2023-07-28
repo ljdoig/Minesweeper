@@ -37,18 +37,18 @@ pub fn get_all_actions(board: &Board) -> Vec<Action> {
 
 pub fn get_trivial_actions(board: &Board) -> Vec<Action> {
     let mut output = vec![];
-    if board.tile_states.iter().all(|&x| x == TileState::Covered) {
+    if board.tile_states().iter().all(|&x| x == TileState::Covered) {
         // first guess, just go for the centre
         let action = Action {
-            col: board.width / 2,
-            row: board.height / 2,
+            col: board.width() / 2,
+            row: board.height() / 2,
             action_type: ActionType::Uncover,
         };
         return vec![action];
     } else if board.num_bombs_left() == 0 {
         // no bombs left, just uncover last uncovered tiles
-        for col in 0..board.width {
-            for row in 0..board.height {
+        for col in 0..board.width() {
+            for row in 0..board.height() {
                 if board.tile_state(col, row) == TileState::Covered {
                     output.push(Action {
                         col,
@@ -61,8 +61,8 @@ pub fn get_trivial_actions(board: &Board) -> Vec<Action> {
         return output;
     }
 
-    for col in 0..board.width {
-        for row in 0..board.height {
+    for col in 0..board.width() {
+        for row in 0..board.height() {
             if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
                 let num_bombs = num_bombs_around(board, col, row);
                 let num_covered = num_covered_around(board, col, row);
@@ -102,8 +102,8 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
     let mut output = vec![];
     let (mut min_bombs, mut max_bombs) = get_subset_bounds(board);
     // check each uncovered tile to see if we have helpful adjacent subsets
-    (0..board.width)
-        .cartesian_product(0..board.height)
+    (0..board.width())
+        .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
             if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
                 Some((col, row, n))
@@ -149,19 +149,62 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 }
             }
         });
+    if !output.is_empty() {
+        return deduplicate(output);
+    }
+
+    // min_bombs
+    //     .iter()
+    //     .for_each(|(subset, min)| println!("min in {:?}: {}", subset, min));
+    // max_bombs
+    //     .iter()
+    //     .for_each(|(subset, max)| println!("max in {:?}: {}", subset, max));
 
     // if we're in the end game, just permute until we find a compatible option
-    // let (num_covered, num_bombs) = (0..board.width)
-    //     .cartesian_product(0..board.height)
-    //     .map(|(col, row)| board.tile_state(col, row))
-    //     .fold((0, 0), |(num_covered, num_bombs), state| match state {
-    //         TileState::Covered => (num_covered + 1, num_bombs),
-    //         TileState::Flagged => (num_covered, num_bombs + 1),
-    //         _ => (num_covered, num_bombs),
-    //     });
-    // if output.is_empty() && total_covered {}
-
-    deduplicate(output)
+    let num_bombs = board.num_bombs_left() as usize;
+    let boundary_conditions: Vec<_> = (0..board.width())
+        .cartesian_product(0..board.height())
+        .filter_map(|(col, row)| {
+            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
+                let num_bombs = num_bombs_around(board, col, row);
+                let n = n - num_bombs;
+                let covered_neighbours = covered_neighbours(board, col, row);
+                if !covered_neighbours.is_empty() {
+                    return Some((n, covered_neighbours));
+                }
+            }
+            None
+        })
+        .collect();
+    let covered = (0..board.width())
+        .cartesian_product(0..board.height())
+        .filter(|(col, row)| {
+            board.tile_state(*col, *row) == TileState::Covered
+        });
+    'combos: for bombs in covered.combinations(num_bombs) {
+        for (n, covered_neighbours) in &boundary_conditions {
+            let num_bombs = covered_neighbours
+                .iter()
+                .filter(|neighbour| bombs.contains(neighbour))
+                .count();
+            if *n != num_bombs as u8 {
+                continue 'combos;
+            }
+        }
+        // println!("assumed bombs: {:?}", bombs);
+        let (col, row) = boundary_conditions.last().unwrap().1.last().unwrap();
+        let action_type = if bombs.contains(&(*col, *row)) {
+            ActionType::Flag
+        } else {
+            ActionType::Uncover
+        };
+        return vec![Action {
+            col: *col,
+            row: *row,
+            action_type,
+        }];
+    }
+    vec![]
 }
 
 fn max_in_subset(tiles: &Subset, max_bombs: &mut HashMap<Subset, u8>) -> u8 {
@@ -170,6 +213,13 @@ fn max_in_subset(tiles: &Subset, max_bombs: &mut HashMap<Subset, u8>) -> u8 {
     } else {
         tiles.0.len() as u8
     };
+    // base case: we can't break down a group of 2 or 1 tiles into useful
+    // subsets
+    if tiles.0.len() <= 2 {
+        return smallest_max;
+    }
+    // recursive case: use information about any subsets to further narrow the
+    // bounds
     let max_size = tiles.0.len().saturating_sub(1);
     for subset in Subset::subsets(&tiles.0, max_size) {
         if let Some(&sub_max) = max_bombs.get(&subset) {
@@ -196,6 +246,13 @@ fn min_in_subset(tiles: &Subset, min_bombs: &mut HashMap<Subset, u8>) -> u8 {
     } else {
         0
     };
+    // base case: we can't break down a group of 2 or 1 tiles into useful
+    // subsets
+    if tiles.0.len() <= 2 {
+        return biggest_min;
+    }
+    // recursive case: use information about any subsets to further narrow the
+    // bounds
     let max_size = tiles.0.len().saturating_sub(1);
     for subset in Subset::subsets(&tiles.0, max_size) {
         if let Some(&sub_min) = min_bombs.get(&subset) {
@@ -221,8 +278,19 @@ fn get_subset_bounds(
 ) -> (HashMap<Subset, u8>, HashMap<Subset, u8>) {
     let mut min_bombs: HashMap<Subset, u8> = HashMap::new();
     let mut max_bombs: HashMap<Subset, u8> = HashMap::new();
-    for col in 0..board.width {
-        for row in 0..board.height {
+    for _ in 0..3 {
+        update_subset_bounds(board, &mut min_bombs, &mut max_bombs);
+    }
+    (min_bombs, max_bombs)
+}
+
+fn update_subset_bounds(
+    board: &Board,
+    min_bombs: &mut HashMap<Subset, u8>,
+    max_bombs: &mut HashMap<Subset, u8>,
+) {
+    for col in 0..board.width() {
+        for row in 0..board.height() {
             if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
                 let n = n - num_bombs_around(board, col, row);
                 let covered = covered_neighbours(board, col, row);
@@ -242,7 +310,7 @@ fn get_subset_bounds(
                     // rule 2: if we exclude tiles with a max of k bombs there
                     // are at least n - k bombs in the remaining subset
                     let rest = covered_subset.not_in(&subset);
-                    let max_omitted = max_in_subset(&rest, &mut max_bombs);
+                    let max_omitted = max_in_subset(&rest, max_bombs);
                     if n > max_omitted {
                         if let Some(min) = min_bombs.get(&subset) {
                             if n > *min {
@@ -256,7 +324,6 @@ fn get_subset_bounds(
             }
         }
     }
-    (min_bombs, max_bombs)
 }
 
 #[derive(Hash, Debug, Eq, PartialEq, Clone)]

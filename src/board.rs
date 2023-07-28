@@ -1,8 +1,11 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
-const NUM_BOMBS: usize = 99;
-pub const GRID_SIZE: (usize, usize) = (30, 16);
+// const NUM_BOMBS: usize = 99;
+// pub const GRID_SIZE: (usize, usize) = (30, 16);
+
+const NUM_BOMBS: usize = 40;
+pub const GRID_SIZE: (usize, usize) = (16, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -36,9 +39,9 @@ pub enum TileState {
 
 #[derive(Component, Clone)]
 pub struct Board {
-    pub width: usize,
-    pub height: usize,
-    pub tile_states: Vec<TileState>,
+    width: usize,
+    height: usize,
+    tile_states: Vec<TileState>,
     bombs: Vec<bool>,
     num_bombs_left: isize,
     first_uncovered: bool,
@@ -56,13 +59,13 @@ impl Board {
             first_uncovered: false,
             seed: 0,
         };
-        board.reset();
+        board.reset(None);
         board
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, seed: Option<u64>) {
         self.tile_states = vec![TileState::Covered; self.width * self.height];
-        self.sample_bombs();
+        self.sample_bombs(seed);
         self.num_bombs_left = NUM_BOMBS as isize;
         self.first_uncovered = false;
     }
@@ -71,18 +74,35 @@ impl Board {
         self.tile_states[self.index(col, row)]
     }
 
+    pub fn tile_states(&self) -> &Vec<TileState> {
+        &self.tile_states
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
     pub fn num_bombs_left(&self) -> isize {
         self.num_bombs_left
     }
 
-    fn sample_bombs(&mut self) {
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    fn sample_bombs(&mut self, seed: Option<u64>) {
         self.bombs = vec![false; self.width * self.height];
 
-        // Set board seed randomly, but store it for revisiting useful instances
-        self.seed = rand::thread_rng().gen();
+        // Set board seed randomly if it is not supplied
+        self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
         // hard!
         // self.seed = 17303725714698196549;
+        self.seed = 1278162579457944058;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
@@ -135,7 +155,7 @@ impl Board {
 
     fn uncover_first(&mut self, col: usize, row: usize) {
         while self.num_bombs_around(col, row) > 0 || self.bomb(col, row) {
-            self.sample_bombs();
+            self.sample_bombs(None);
         }
         println!("Board seed: {}", self.seed);
         self.uncover_safe(col, row);
