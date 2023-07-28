@@ -30,6 +30,7 @@ fn main() {
             bevy_framepace::FramepacePlugin,
         ))
         .add_state::<GameState>()
+        .add_state::<AgentState>()
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_esc)
         .add_systems(Update, check_restart)
@@ -44,13 +45,20 @@ pub enum GameState {
     GameOver,
 }
 
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub enum AgentState {
+    #[default]
+    Resting,
+    Thinking,
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     mut settings: ResMut<bevy_framepace::FramepaceSettings>,
 ) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(20.0);
+    settings.limiter = bevy_framepace::Limiter::from_framerate(40.0);
     commands.spawn(Camera2dBundle::default());
 
     let texture_handle = asset_server.load("minesweeper_tiles.png");
@@ -138,6 +146,8 @@ fn check_action(
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
+    mut next_agent_state: ResMut<NextState<AgentState>>,
+    agent_state: ResMut<State<AgentState>>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
 ) {
     let mut board = board_query.get_single_mut().unwrap();
@@ -163,23 +173,27 @@ fn check_action(
             );
         }
     }
-    // use bot
 
+    // use bot
     if keys.just_pressed(KeyCode::Space) {
-        let mut actions = agent::get_all_actions(&board);
-        while !actions.is_empty() {
-            for action in actions {
-                let result = complete_action(
-                    &mut board,
-                    action,
-                    &mut next_app_state,
-                    &mut tile_sprites_query,
-                );
-                if result != ActionResult::Continue {
-                    return;
-                }
+        next_agent_state.set(AgentState::Thinking)
+    }
+    if matches!(agent_state.get(), AgentState::Thinking) {
+        let actions = agent::get_all_actions(&board);
+        if actions.is_empty() {
+            next_agent_state.set(AgentState::Resting)
+        }
+        for action in actions {
+            let result = complete_action(
+                &mut board,
+                action,
+                &mut next_app_state,
+                &mut tile_sprites_query,
+            );
+            if result != ActionResult::Continue {
+                next_agent_state.set(AgentState::Resting);
+                return;
             }
-            actions = agent::get_all_actions(&board);
         }
     }
     let trivial = keys.just_pressed(KeyCode::Key1);

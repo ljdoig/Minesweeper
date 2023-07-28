@@ -102,7 +102,12 @@ impl Board {
 
         // hard!
         // self.seed = 17303725714698196549;
-        self.seed = 1278162579457944058;
+
+        // first guess sucks
+        // self.seed = 16158226960180946139;
+
+        // lots of combos - end game needs work, click on guaranteed fine
+        // self.seed = 8931480792710124206;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement

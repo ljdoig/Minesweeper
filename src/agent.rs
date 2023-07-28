@@ -23,8 +23,27 @@ fn covered_neighbours(
         .collect()
 }
 
+fn uncovered_neighbours(
+    board: &Board,
+    col: usize,
+    row: usize,
+) -> Vec<(usize, usize)> {
+    board
+        .neighbours(col, row)
+        .iter()
+        .filter(|(col, row)| {
+            matches!(board.tile_state(*col, *row), TileState::UncoveredSafe(_))
+        })
+        .cloned()
+        .collect()
+}
+
 fn num_covered_around(board: &Board, col: usize, row: usize) -> u8 {
     covered_neighbours(board, col, row).len() as u8
+}
+
+fn num_uncovered_around(board: &Board, col: usize, row: usize) -> u8 {
+    uncovered_neighbours(board, col, row).len() as u8
 }
 
 pub fn get_all_actions(board: &Board) -> Vec<Action> {
@@ -119,6 +138,8 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 return;
             }
             for subset in Subset::subsets(&covered, num_covered - 1) {
+                let subset =
+                    Subset::new(subset.iter().cloned().cloned().collect_vec());
                 // need so few bombs in subset that the rest must be bombs
                 let max = max_in_subset(&subset, &mut max_bombs);
                 let rest_size = (num_covered - subset.0.len()) as u8;
@@ -160,8 +181,8 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
     //     .iter()
     //     .for_each(|(subset, max)| println!("max in {:?}: {}", subset, max));
 
-    // if we're in the end game, just permute until we find a compatible option
-    let num_bombs = board.num_bombs_left() as usize;
+    // if we're out of ideas, just permute until we find a compatible option
+    let num_bombs = board.num_bombs_left() as u128;
     let boundary_conditions: Vec<_> = (0..board.width())
         .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
@@ -176,12 +197,33 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
             None
         })
         .collect();
-    let covered = (0..board.width())
+    let mut covered = (0..board.width())
         .cartesian_product(0..board.height())
+        .filter(|(col, row)| board.tile_state(*col, *row) == TileState::Covered)
+        .collect_vec();
+    let covered_boundary = covered
+        .iter()
         .filter(|(col, row)| {
-            board.tile_state(*col, *row) == TileState::Covered
-        });
-    'combos: for bombs in covered.combinations(num_bombs) {
+            !uncovered_neighbours(board, *col, *row).is_empty()
+        })
+        .cloned()
+        .collect_vec();
+    if covered_boundary.len() > 20 {
+        // here we need to just pick something to avoid too long combos
+        return vec![];
+    }
+    // which tiles to check for bombs - either all uncovered or just boundary
+    let combinations = if covered.len() > 25 {
+        covered = covered_boundary;
+        Subset::subsets(&covered, covered.len())
+    } else {
+        covered
+            .iter()
+            .combinations(num_bombs as usize)
+            .collect_vec()
+    };
+
+    'combos: for bombs in combinations {
         for (n, covered_neighbours) in &boundary_conditions {
             let num_bombs = covered_neighbours
                 .iter()
@@ -191,17 +233,16 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 continue 'combos;
             }
         }
-        // println!("assumed bombs: {:?}", bombs);
-        let (col, row) = boundary_conditions.last().unwrap().1.last().unwrap();
-        let action_type = if bombs.contains(&(*col, *row)) {
-            ActionType::Flag
-        } else {
-            ActionType::Uncover
-        };
+        println!("assumed bombs {:?}", bombs);
+        let (col, row) = covered
+            .iter()
+            .filter(|(col, row)| !bombs.contains(&&(*col, *row)))
+            .max_by_key(|(col, row)| num_uncovered_around(board, *col, *row))
+            .unwrap();
         return vec![Action {
             col: *col,
             row: *row,
-            action_type,
+            action_type: ActionType::Uncover,
         }];
     }
     vec![]
@@ -222,6 +263,7 @@ fn max_in_subset(tiles: &Subset, max_bombs: &mut HashMap<Subset, u8>) -> u8 {
     // bounds
     let max_size = tiles.0.len().saturating_sub(1);
     for subset in Subset::subsets(&tiles.0, max_size) {
+        let subset = Subset::new(subset.iter().cloned().cloned().collect_vec());
         if let Some(&sub_max) = max_bombs.get(&subset) {
             let rest = tiles.not_in(&subset);
             let tiles_max = sub_max + max_in_subset(&rest, max_bombs);
@@ -255,6 +297,7 @@ fn min_in_subset(tiles: &Subset, min_bombs: &mut HashMap<Subset, u8>) -> u8 {
     // bounds
     let max_size = tiles.0.len().saturating_sub(1);
     for subset in Subset::subsets(&tiles.0, max_size) {
+        let subset = Subset::new(subset.iter().cloned().cloned().collect_vec());
         if let Some(&sub_min) = min_bombs.get(&subset) {
             let rest = tiles.not_in(&subset);
             let tiles_min = sub_min + min_in_subset(&rest, min_bombs);
@@ -297,6 +340,9 @@ fn update_subset_bounds(
                 let num_covered = covered.len();
                 let covered_subset = Subset::new(covered.clone());
                 for subset in Subset::subsets(&covered, num_covered) {
+                    let subset = Subset::new(
+                        subset.iter().cloned().cloned().collect_vec(),
+                    );
                     // rule 1: at most n bombs in all subsets around the tile
                     if subset.0.len() > n as usize {
                         if let Some(max) = max_bombs.get(&subset) {
@@ -335,12 +381,12 @@ impl Subset {
         Subset(elts)
     }
 
-    fn subsets(elts: &[(usize, usize)], max_size: usize) -> Vec<Subset> {
+    fn subsets(
+        elts: &[(usize, usize)],
+        max_size: usize,
+    ) -> Vec<Vec<&(usize, usize)>> {
         (2..=max_size)
             .flat_map(|k| elts.iter().combinations(k))
-            .map(|combination| {
-                Subset::new(combination.iter().cloned().cloned().collect())
-            })
             .collect()
     }
 
