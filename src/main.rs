@@ -52,6 +52,13 @@ pub enum AgentState {
     Thinking,
 }
 
+#[derive(Component, Debug, Default)]
+pub struct Record {
+    win: usize,
+    loss: usize,
+    dnf: usize,
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -93,7 +100,7 @@ fn setup(
     let board = Board::new(GRID_SIZE);
     println!("Beginning game with {} bombs", board.num_bombs_left());
     commands.spawn(board);
-    // commands.spawn(Agent {});
+    commands.spawn(Record::default());
 }
 
 #[derive(Component)]
@@ -127,13 +134,19 @@ fn check_restart(
     keys: Res<Input<KeyCode>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
+    app_state: ResMut<State<GameState>>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    mut record_query: Query<&mut Record>,
 ) {
     let replay = keys.just_pressed(KeyCode::R);
     if keys.just_pressed(KeyCode::Return) || replay {
         let mut board = board_query.get_single_mut().unwrap();
         let seed = replay.then_some(board.seed());
         board.reset(seed);
+        let mut record = record_query.get_single_mut().unwrap();
+        if let GameState::Game = app_state.get() {
+            record.dnf += 1;
+        }
         next_app_state.set(GameState::Game);
         println!("Beginning game with {} bombs", board.num_bombs_left());
         sync_board_with_tile_sprites(&mut board, &mut tile_sprites_query);
@@ -149,6 +162,7 @@ fn check_action(
     mut next_agent_state: ResMut<NextState<AgentState>>,
     agent_state: ResMut<State<AgentState>>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    mut record_query: Query<&mut Record>,
 ) {
     let mut board = board_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
@@ -170,6 +184,7 @@ fn check_action(
                 action,
                 &mut next_app_state,
                 &mut tile_sprites_query,
+                &mut record_query,
             );
         }
     }
@@ -189,6 +204,7 @@ fn check_action(
                 action,
                 &mut next_app_state,
                 &mut tile_sprites_query,
+                &mut record_query,
             );
             if result != ActionResult::Continue {
                 next_agent_state.set(AgentState::Resting);
@@ -211,6 +227,7 @@ fn check_action(
                     action,
                     &mut next_app_state,
                     &mut tile_sprites_query,
+                    &mut record_query,
                 );
                 if result != ActionResult::Continue {
                     return;
@@ -231,6 +248,7 @@ fn check_action(
                 action,
                 &mut next_app_state,
                 &mut tile_sprites_query,
+                &mut record_query,
             );
         }
     }
@@ -241,15 +259,21 @@ fn complete_action(
     action: Action,
     next_app_state: &mut ResMut<NextState<GameState>>,
     tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    record_query: &mut Query<&mut Record>,
 ) -> ActionResult {
     let result = board.apply_action(action);
+    let mut record = record_query.get_single_mut().unwrap();
     match result {
         ActionResult::Win => {
+            record.win += 1;
             println!("You won!");
+            println!("{:?}", record);
             next_app_state.set(GameState::GameOver);
         }
         ActionResult::Lose => {
+            record.loss += 1;
             println!("You lost...");
+            println!("{:?}", record);
             next_app_state.set(GameState::GameOver);
         }
         ActionResult::Continue => {

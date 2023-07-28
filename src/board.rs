@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
-// const NUM_BOMBS: usize = 99;
-// pub const GRID_SIZE: (usize, usize) = (30, 16);
+const NUM_BOMBS: usize = 99;
+pub const GRID_SIZE: (usize, usize) = (30, 16);
 
-const NUM_BOMBS: usize = 40;
-pub const GRID_SIZE: (usize, usize) = (16, 16);
+// const NUM_BOMBS: usize = 40;
+// pub const GRID_SIZE: (usize, usize) = (16, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
