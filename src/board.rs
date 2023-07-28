@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
-const NUM_BOMBS: usize = 99;
-pub const GRID_SIZE: (usize, usize) = (30, 16);
+// const NUM_BOMBS: usize = 99;
+// pub const GRID_SIZE: (usize, usize) = (30, 16);
 
-// const NUM_BOMBS: usize = 40;
-// pub const GRID_SIZE: (usize, usize) = (16, 16);
+const NUM_BOMBS: usize = 40;
+pub const GRID_SIZE: (usize, usize) = (16, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -105,9 +105,6 @@ impl Board {
 
         // first guess sucks
         // self.seed = 16158226960180946139;
-
-        // lots of combos - end game needs work, click on guaranteed fine
-        // self.seed = 8931480792710124206;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement

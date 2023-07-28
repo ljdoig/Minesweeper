@@ -42,10 +42,6 @@ fn num_covered_around(board: &Board, col: usize, row: usize) -> u8 {
     covered_neighbours(board, col, row).len() as u8
 }
 
-fn num_uncovered_around(board: &Board, col: usize, row: usize) -> u8 {
-    uncovered_neighbours(board, col, row).len() as u8
-}
-
 pub fn get_all_actions(board: &Board) -> Vec<Action> {
     let mut output = get_trivial_actions(board);
     if output.is_empty() {
@@ -209,8 +205,29 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
         .cloned()
         .collect_vec();
     if covered_boundary.len() > 20 {
-        // here we need to just pick something to avoid too long combos
-        return vec![];
+        // to avoid combinatorics, we just take the tile with the best odds
+        let (col, row) = covered_boundary
+            .iter()
+            .min_by_key(|(col, row)| {
+                min_bombs
+                    .iter()
+                    .filter(|(subset, _)| {
+                        subset.0.contains(&(*col, *row))
+                            && min_bombs.get(subset) == max_bombs.get(subset)
+                    })
+                    .map(|(subset, n)| {
+                        ((*n as f64 / subset.0.len() as f64) * 10000.0) as usize
+                    })
+                    .max()
+                    .unwrap()
+            })
+            .unwrap();
+        println!("Guessing: {col}, {row}");
+        return vec![Action {
+            col: *col,
+            row: *row,
+            action_type: ActionType::Uncover,
+        }];
     }
     // which tiles to check for bombs - either all uncovered or just boundary
     let combinations = if covered.len() > 25 {
@@ -223,6 +240,7 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
             .collect_vec()
     };
 
+    let mut legal_bomb_combos = vec![];
     'combos: for bombs in combinations {
         for (n, covered_neighbours) in &boundary_conditions {
             let num_bombs = covered_neighbours
@@ -233,19 +251,23 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 continue 'combos;
             }
         }
-        println!("assumed bombs {:?}", bombs);
-        let (col, row) = covered
-            .iter()
-            .filter(|(col, row)| !bombs.contains(&&(*col, *row)))
-            .max_by_key(|(col, row)| num_uncovered_around(board, *col, *row))
-            .unwrap();
-        return vec![Action {
-            col: *col,
-            row: *row,
-            action_type: ActionType::Uncover,
-        }];
+        legal_bomb_combos.push(bombs);
     }
-    vec![]
+    let (col, row) = covered
+        .iter()
+        .max_by_key(|tile| {
+            legal_bomb_combos
+                .iter()
+                .filter(|bombs| !bombs.contains(&tile))
+                .count()
+        })
+        .unwrap();
+    println!("Best odds from iterating: {col}, {row}");
+    vec![Action {
+        col: *col,
+        row: *row,
+        action_type: ActionType::Uncover,
+    }]
 }
 
 fn max_in_subset(tiles: &Subset, max_bombs: &mut HashMap<Subset, u8>) -> u8 {

@@ -134,6 +134,7 @@ fn check_restart(
     keys: Res<Input<KeyCode>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
+    mut next_agent_state: ResMut<NextState<AgentState>>,
     app_state: ResMut<State<GameState>>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
     mut record_query: Query<&mut Record>,
@@ -146,8 +147,10 @@ fn check_restart(
         let mut record = record_query.get_single_mut().unwrap();
         if let GameState::Game = app_state.get() {
             record.dnf += 1;
+            println!("{:?}", *record);
         }
         next_app_state.set(GameState::Game);
+        next_agent_state.set(AgentState::Resting);
         println!("Beginning game with {} bombs", board.num_bombs_left());
         sync_board_with_tile_sprites(&mut board, &mut tile_sprites_query);
     }
@@ -267,13 +270,13 @@ fn complete_action(
         ActionResult::Win => {
             record.win += 1;
             println!("You won!");
-            println!("{:?}", record);
+            println!("{:?}", *record);
             next_app_state.set(GameState::GameOver);
         }
         ActionResult::Lose => {
             record.loss += 1;
             println!("You lost...");
-            println!("{:?}", record);
+            println!("{:?}", *record);
             next_app_state.set(GameState::GameOver);
         }
         ActionResult::Continue => {
