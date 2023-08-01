@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
-// const NUM_BOMBS: usize = 99;
-// pub const GRID_SIZE: (usize, usize) = (30, 16);
+const NUM_BOMBS: usize = 99;
+pub const GRID_SIZE: (usize, usize) = (30, 16);
 
-const NUM_BOMBS: usize = 40;
-pub const GRID_SIZE: (usize, usize) = (16, 16);
+// const NUM_BOMBS: usize = 40;
+// pub const GRID_SIZE: (usize, usize) = (16, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -102,9 +102,10 @@ impl Board {
 
         // hard!
         // self.seed = 17303725714698196549;
+        // self.seed = 4572300672337907789;
 
-        // first guess sucks
-        // self.seed = 16158226960180946139;
+        // suss
+        // self.seed = 17602624412304623586;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
@@ -225,6 +226,8 @@ impl Board {
             action_type,
         }: Action,
     ) -> ActionResult {
+        assert!(col < self.width);
+        assert!(row < self.height);
         match (self.tile_state(col, row), action_type) {
             // flag
             (TileState::Covered, ActionType::Flag) => {

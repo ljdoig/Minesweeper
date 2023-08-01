@@ -93,7 +93,7 @@ pub fn get_trivial_actions(board: &Board) -> Vec<Action> {
                         .for_each(|x| output.push(x));
                 }
                 // flag all neighbours
-                if n - num_bombs == num_covered {
+                if n.saturating_sub(num_bombs) == num_covered {
                     board
                         .neighbours(col, row)
                         .into_iter()
@@ -179,7 +179,7 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
 
     // if we're out of ideas, just permute until we find a compatible option
     let num_bombs = board.num_bombs_left() as u128;
-    let boundary_conditions: Vec<_> = (0..board.width())
+    let boundary_constraints: Vec<_> = (0..board.width())
         .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
             if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
@@ -242,7 +242,7 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
 
     let mut legal_bomb_combos = vec![];
     'combos: for bombs in combinations {
-        for (n, covered_neighbours) in &boundary_conditions {
+        for (n, covered_neighbours) in &boundary_constraints {
             let num_bombs = covered_neighbours
                 .iter()
                 .filter(|neighbour| bombs.contains(neighbour))
@@ -251,23 +251,25 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 continue 'combos;
             }
         }
+        // println!("{:?}", bombs);
         legal_bomb_combos.push(bombs);
     }
-    let (col, row) = covered
-        .iter()
-        .max_by_key(|tile| {
-            legal_bomb_combos
-                .iter()
-                .filter(|bombs| !bombs.contains(&tile))
-                .count()
-        })
-        .unwrap();
-    println!("Best odds from iterating: {col}, {row}");
-    vec![Action {
-        col: *col,
-        row: *row,
-        action_type: ActionType::Uncover,
-    }]
+    let tile = covered.iter().max_by_key(|tile| {
+        legal_bomb_combos
+            .iter()
+            .filter(|bombs| !bombs.contains(&tile))
+            .count()
+    });
+    if let Some((col, row)) = tile {
+        println!("Best odds from iterating: {col}, {row}");
+        vec![Action {
+            col: *col,
+            row: *row,
+            action_type: ActionType::Uncover,
+        }]
+    } else {
+        vec![]
+    }
 }
 
 fn max_in_subset(tiles: &Subset, max_bombs: &mut HashMap<Subset, u8>) -> u8 {
@@ -381,11 +383,24 @@ fn update_subset_bounds(
                     let max_omitted = max_in_subset(&rest, max_bombs);
                     if n > max_omitted {
                         if let Some(min) = min_bombs.get(&subset) {
-                            if n > *min {
-                                min_bombs.insert(subset, n - max_omitted);
+                            if n - max_omitted > *min {
+                                min_bombs
+                                    .insert(subset.clone(), n - max_omitted);
                             }
                         } else {
-                            min_bombs.insert(subset, n - max_omitted);
+                            min_bombs.insert(subset.clone(), n - max_omitted);
+                        }
+                    }
+                    // rule 3: if we exclude tiles with a min of k bombs there
+                    // are at most n - k bombs in the remaining subset
+                    let min_omitted = min_in_subset(&rest, min_bombs);
+                    if n > min_omitted {
+                        if let Some(max) = max_bombs.get(&subset) {
+                            if n - min_omitted < *max {
+                                max_bombs.insert(subset, n - min_omitted);
+                            }
+                        } else {
+                            max_bombs.insert(subset, n - min_omitted);
                         }
                     }
                 }
