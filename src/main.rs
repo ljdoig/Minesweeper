@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 
@@ -7,21 +9,31 @@ use board::*;
 mod agent;
 
 const WINDOW_HEIGHT: f32 = 750.0;
-const TILE_SPRITE_SIZE: f32 = 128.0;
+const TILE_SPRITE_SIZE: f32 = 16.0;
+const EDGE_PADDING_SIZE: f32 = 12.0;
+const TOP_PADDING_SIZE: f32 = 12.0;
 
-const ASPECT_RATIO: f32 = GRID_SIZE.0 as f32 / GRID_SIZE.1 as f32;
-const WINDOW_SIZE: (f32, f32) = (WINDOW_HEIGHT * ASPECT_RATIO, WINDOW_HEIGHT);
-const TILE_SIZE: f32 = WINDOW_SIZE.1 / GRID_SIZE.1 as f32;
+const UNSCALED_HEIGHT: f32 = GRID_SIZE.1 as f32 * TILE_SPRITE_SIZE
+    + TOP_PADDING_SIZE
+    + EDGE_PADDING_SIZE;
+const SCALE: f32 = WINDOW_HEIGHT / UNSCALED_HEIGHT;
+const TILE_SIZE: f32 = TILE_SPRITE_SIZE * SCALE;
+const EDGE_PADDING: f32 = EDGE_PADDING_SIZE * SCALE;
+const TOP_PADDING: f32 = TOP_PADDING_SIZE * SCALE;
+const BOARD_WIDTH: f32 = TILE_SIZE * GRID_SIZE.0 as f32;
+const WINDOW_WIDTH: f32 = BOARD_WIDTH + 2.0 * EDGE_PADDING;
+const BOARD_HEIGHT: f32 = WINDOW_HEIGHT - TOP_PADDING - EDGE_PADDING;
 
 fn main() {
     App::new()
+        .insert_resource(ClearColor(Color::rgb(0.7569, 0.7569, 0.7569)))
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()).set(
                 WindowPlugin {
                     primary_window: Some(Window {
-                        resolution: [WINDOW_SIZE.0, WINDOW_SIZE.1].into(),
+                        resolution: [WINDOW_WIDTH, WINDOW_HEIGHT].into(),
                         title: "Minesweeper".to_string(),
-                        resizable: false,
+                        resizable: true,
                         ..default()
                     }),
                     ..default()
@@ -90,31 +102,96 @@ fn setup(
                     transform: Transform::from_translation(
                         tile_sprite.screen_pos().extend(0.0),
                     )
-                    .with_scale(Vec3::splat(TILE_SIZE / TILE_SPRITE_SIZE)),
+                    .with_scale(Vec3::splat(SCALE)),
                     ..default()
                 },
                 tile_sprite,
             ));
         }
     }
+    spawn_padding(&mut commands, asset_server);
     let board = Board::new(GRID_SIZE);
     println!("Beginning game with {} bombs", board.num_bombs_left());
     commands.spawn(board);
     commands.spawn(Record::default());
 }
 
+fn spawn_padding(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    // horizontals
+    let board_centre =
+        Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - TOP_PADDING - BOARD_HEIGHT / 2.0);
+    let vertical_offset =
+        Vec2::new(0.0, BOARD_HEIGHT / 2.0 + EDGE_PADDING / 2.0);
+    spawn_padding_piece(
+        commands,
+        &asset_server,
+        board_centre + vertical_offset,
+        true,
+    );
+    spawn_padding_piece(
+        commands,
+        &asset_server,
+        board_centre - vertical_offset,
+        true,
+    );
+    // verticals
+    let horizontal_offset =
+        Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
+    spawn_padding_piece(
+        commands,
+        &asset_server,
+        board_centre + horizontal_offset,
+        false,
+    );
+    spawn_padding_piece(
+        commands,
+        &asset_server,
+        board_centre - horizontal_offset,
+        false,
+    );
+}
+
+fn spawn_padding_piece(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    centre: Vec2,
+    horizontal: bool,
+) {
+    let (rotation, scale) = if horizontal {
+        (
+            Quat::from_rotation_z(-PI / 2.0),
+            Vec2::new(SCALE, BOARD_WIDTH / TILE_SPRITE_SIZE),
+        )
+    } else {
+        (
+            Quat::IDENTITY,
+            Vec2::new(SCALE, BOARD_HEIGHT / TILE_SPRITE_SIZE),
+        )
+    };
+    commands.spawn(SpriteBundle {
+        texture: asset_server.load("padding.png"),
+        transform: Transform {
+            rotation,
+            scale: scale.extend(1.0),
+            translation: centre.extend(1.0),
+        },
+        ..default()
+    });
+}
+
 #[derive(Component)]
 pub struct TileSprite {
-    pub col: usize,
-    pub row: usize,
+    col: usize,
+    row: usize,
 }
 
 impl TileSprite {
     fn screen_pos(&self) -> Vec2 {
         let translation_x =
             TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
-        let translation_y =
-            TILE_SIZE * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0);
+        let translation_y = TILE_SIZE
+            * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0)
+            - (TOP_PADDING - EDGE_PADDING) / 2.0;
         Vec2::new(translation_x, translation_y)
     }
 }
@@ -140,7 +217,9 @@ fn check_restart(
     mut record_query: Query<&mut Record>,
 ) {
     let replay = keys.just_pressed(KeyCode::R);
-    if keys.just_pressed(KeyCode::Return) || replay {
+    if keys.just_pressed(KeyCode::Return) || replay
+    // || matches!(app_state.get(), GameState::GameOver)
+    {
         let mut board = board_query.get_single_mut().unwrap();
         let seed = replay.then_some(board.seed());
         board.reset(seed);
@@ -177,18 +256,28 @@ fn check_action(
             None
         };
         if let Some(action_type) = action_type {
-            let action = Action {
-                col: (position.x / TILE_SIZE) as usize,
-                row: (position.y / TILE_SIZE) as usize,
-                action_type,
-            };
-            complete_action(
-                &mut board,
-                action,
-                &mut next_app_state,
-                &mut tile_sprites_query,
-                &mut record_query,
-            );
+            let col = ((position.x - EDGE_PADDING) / TILE_SIZE) as usize;
+            let row = ((position.y - TOP_PADDING) / TILE_SIZE) as usize;
+            if col < board.width()
+                && row < board.height()
+                && !matches!(
+                    board.tile_state(col, row),
+                    TileState::UncoveredSafe(_)
+                )
+            {
+                let action = Action {
+                    col,
+                    row,
+                    action_type,
+                };
+                complete_action(
+                    &mut board,
+                    action,
+                    &mut next_app_state,
+                    &mut tile_sprites_query,
+                    &mut record_query,
+                );
+            }
         }
     }
 
