@@ -256,27 +256,30 @@ fn check_action(
             None
         };
         if let Some(action_type) = action_type {
-            let col = ((position.x - EDGE_PADDING) / TILE_SIZE) as usize;
-            let row = ((position.y - TOP_PADDING) / TILE_SIZE) as usize;
-            if col < board.width()
-                && row < board.height()
-                && !matches!(
-                    board.tile_state(col, row),
-                    TileState::UncoveredSafe(_)
-                )
-            {
-                let action = Action {
-                    col,
-                    row,
-                    action_type,
-                };
-                complete_action(
-                    &mut board,
-                    action,
-                    &mut next_app_state,
-                    &mut tile_sprites_query,
-                    &mut record_query,
-                );
+            // this ensures we can't click slightly above the first row/col
+            if position.x > EDGE_PADDING && position.y > TOP_PADDING {
+                let col = ((position.x - EDGE_PADDING) / TILE_SIZE) as usize;
+                let row = ((position.y - TOP_PADDING) / TILE_SIZE) as usize;
+                if col < board.width()
+                    && row < board.height()
+                    && !matches!(
+                        board.tile_state(col, row),
+                        TileState::UncoveredSafe(_)
+                    )
+                {
+                    let action = Action {
+                        col,
+                        row,
+                        action_type,
+                    };
+                    complete_action(
+                        &mut board,
+                        action,
+                        &mut next_app_state,
+                        &mut tile_sprites_query,
+                        &mut record_query,
+                    );
+                }
             }
         }
     }
