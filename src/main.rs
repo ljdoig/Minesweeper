@@ -313,7 +313,7 @@ fn check_action(
         let mut actions = if trivial {
             agent::get_trivial_actions(&board)
         } else {
-            agent::get_non_trivial_actions(&board)
+            agent::deductions::get_non_trivial_actions(&board)
         };
         while !actions.is_empty() {
             for action in actions {
@@ -336,7 +336,7 @@ fn check_action(
         }
     }
     if keys.just_pressed(KeyCode::Key3) {
-        let action = agent::get_high_probability_guess(&board);
+        let action = agent::guesses::get_high_probability_guess(&board);
         complete_action(
             &mut board,
             action,

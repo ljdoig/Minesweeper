@@ -100,24 +100,10 @@ impl Board {
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
-        // hard!
-        // self.seed = 17303725714698196549;
-        // self.seed = 4572300672337907789;
-        // self.seed = 4426170496159207277;
-
+        // maybe if you can split the boundary up in to islands, you can solve them spearately
+        // self.seed = 4488024197040602121;
+        // maybe try and select a tile that is closest to a boundary tile
         // self.seed = 2148938678238164413;
-        // Beginning game with 99 bombs
-        // Board seed: 2148938678238164413
-        // Num bombs left: 99
-        // Best odds on boundary: 0.890
-        // Best odds not on boundary: 0.796  (91.9 bombs in 450) tiles
-        // Best odds from iterating: (14, 6); 0.890
-        // Num bombs left: 99
-
-        // better end game
-        // self.seed = 12464617631700473778;
-        // self.seed = 1036212357717179313;
-        // self.seed = 778306138440337107;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
