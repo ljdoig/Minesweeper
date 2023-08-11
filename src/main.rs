@@ -336,16 +336,14 @@ fn check_action(
         }
     }
     if keys.just_pressed(KeyCode::Key3) {
-        let mut actions = agent::get_non_trivial_actions(&board);
-        if let Some(action) = actions.pop() {
-            complete_action(
-                &mut board,
-                action,
-                &mut next_app_state,
-                &mut tile_sprites_query,
-                &mut record_query,
-            );
-        }
+        let action = agent::get_high_probability_guess(&board);
+        complete_action(
+            &mut board,
+            action,
+            &mut next_app_state,
+            &mut tile_sprites_query,
+            &mut record_query,
+        );
     }
 }
 

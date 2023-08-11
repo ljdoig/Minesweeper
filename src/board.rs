@@ -103,9 +103,21 @@ impl Board {
         // hard!
         // self.seed = 17303725714698196549;
         // self.seed = 4572300672337907789;
+        // self.seed = 4426170496159207277;
 
-        // suss
-        // self.seed = 17602624412304623586;
+        // self.seed = 2148938678238164413;
+        // Beginning game with 99 bombs
+        // Board seed: 2148938678238164413
+        // Num bombs left: 99
+        // Best odds on boundary: 0.890
+        // Best odds not on boundary: 0.796  (91.9 bombs in 450) tiles
+        // Best odds from iterating: (14, 6); 0.890
+        // Num bombs left: 99
+
+        // better end game
+        // self.seed = 12464617631700473778;
+        // self.seed = 1036212357717179313;
+        // self.seed = 778306138440337107;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
