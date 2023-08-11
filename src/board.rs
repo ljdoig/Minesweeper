@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
+use crate::TilePos;
+
 const NUM_BOMBS: usize = 99;
 pub const GRID_SIZE: (usize, usize) = (30, 16);
 
@@ -9,9 +11,23 @@ pub const GRID_SIZE: (usize, usize) = (30, 16);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
-    pub col: usize,
-    pub row: usize,
+    pub pos: TilePos,
     pub action_type: ActionType,
+}
+
+impl Action {
+    pub fn uncover(pos: TilePos) -> Action {
+        Action {
+            pos,
+            action_type: ActionType::Uncover,
+        }
+    }
+    pub fn flag(pos: TilePos) -> Action {
+        Action {
+            pos,
+            action_type: ActionType::Flag,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -70,8 +86,8 @@ impl Board {
         self.first_uncovered = false;
     }
 
-    pub fn tile_state(&self, col: usize, row: usize) -> TileState {
-        self.tile_states[self.index(col, row)]
+    pub fn tile_state(&self, pos: TilePos) -> TileState {
+        self.tile_states[self.index(pos)]
     }
 
     pub fn tile_states(&self) -> &Vec<TileState> {
@@ -116,83 +132,88 @@ impl Board {
         }
     }
 
-    fn index(&self, col: usize, row: usize) -> usize {
+    fn index(&self, TilePos { col, row }: TilePos) -> usize {
         self.width * row + col
     }
 
-    fn bomb(&self, col: usize, row: usize) -> bool {
-        self.bombs[self.index(col, row)]
+    fn bomb(&self, pos: TilePos) -> bool {
+        self.bombs[self.index(pos)]
     }
 
-    fn set(&mut self, col: usize, row: usize, state: TileState) {
-        let index = self.index(col, row);
+    fn set(&mut self, pos: TilePos, state: TileState) {
+        let index = self.index(pos);
         self.tile_states[index] = state;
     }
 
-    fn on_board(&self, col: usize, row: usize) -> bool {
-        col < self.width && row < self.height
-    }
-
-    pub fn neighbours(&self, col: usize, row: usize) -> Vec<(usize, usize)> {
+    pub fn neighbours(&self, TilePos { col, row }: TilePos) -> Vec<TilePos> {
         let mut neighbours = vec![];
         for neighbour_col in col.saturating_sub(1)..=col + 1 {
             for neighbour_row in row.saturating_sub(1)..=row + 1 {
-                if self.on_board(neighbour_col, neighbour_row)
+                if neighbour_col < self.width
+                    && neighbour_row < self.height
                     && !(neighbour_col == col && neighbour_row == row)
                 {
-                    neighbours.push((neighbour_col, neighbour_row))
+                    neighbours.push(TilePos {
+                        col: neighbour_col,
+                        row: neighbour_row,
+                    })
                 }
             }
         }
         neighbours
     }
 
-    fn num_bombs_around(&mut self, col: usize, row: usize) -> u8 {
-        self.neighbours(col, row)
-            .into_iter()
-            .filter(|(col, row)| self.bomb(*col, *row))
+    fn num_bombs_around(&mut self, pos: TilePos) -> u8 {
+        self.neighbours(pos)
+            .iter()
+            .filter(|&&neighbour| {
+                let index = self.index(neighbour);
+                self.bombs[index]
+            })
             .count() as u8
     }
 
-    fn uncover_first(&mut self, col: usize, row: usize) {
-        while self.num_bombs_around(col, row) > 0 || self.bomb(col, row) {
+    fn uncover_first(&mut self, pos: TilePos) {
+        while self.num_bombs_around(pos) > 0 || self.bomb(pos) {
             self.sample_bombs(None);
         }
         println!("Board seed: {}", self.seed);
-        self.uncover_safe(col, row);
+        self.uncover_safe(pos);
     }
 
-    fn uncover_safe(&mut self, col: usize, row: usize) {
-        let num_bombs = self.num_bombs_around(col, row);
-        self.set(col, row, TileState::UncoveredSafe(num_bombs));
+    fn uncover_safe(&mut self, pos: TilePos) {
+        let num_bombs = self.num_bombs_around(pos);
+        self.set(pos, TileState::UncoveredSafe(num_bombs));
         if num_bombs == 0 {
-            for (col, row) in self.neighbours(col, row) {
-                if self.tile_state(col, row) == TileState::Covered {
-                    self.uncover_safe(col, row)
+            for neighbour in self.neighbours(pos) {
+                if self.tile_state(neighbour) == TileState::Covered {
+                    self.uncover_safe(neighbour)
                 }
             }
         }
     }
 
-    fn uncover_loss(&mut self, col: usize, row: usize) {
+    fn uncover_loss(&mut self, pos: TilePos) {
         for col in 0..self.width {
             for row in 0..self.height {
-                let flagged = self.tile_state(col, row) == TileState::Flagged;
-                if self.bomb(col, row) && !flagged {
-                    self.set(col, row, TileState::UncoveredBomb);
-                } else if !self.bomb(col, row) && flagged {
-                    self.set(col, row, TileState::Misflagged);
+                let pos = TilePos { col, row };
+                let flagged = self.tile_state(pos) == TileState::Flagged;
+                if self.bomb(pos) && !flagged {
+                    self.set(pos, TileState::UncoveredBomb);
+                } else if !self.bomb(pos) && flagged {
+                    self.set(pos, TileState::Misflagged);
                 }
             }
         }
-        self.set(col, row, TileState::ExplodedBomb);
+        self.set(pos, TileState::ExplodedBomb);
     }
 
     fn flag_remaining(&mut self) {
         for col in 0..self.width {
             for row in 0..self.height {
-                if self.bomb(col, row) {
-                    self.set(col, row, TileState::Flagged);
+                let pos = TilePos { col, row };
+                if self.bomb(pos) {
+                    self.set(pos, TileState::Flagged);
                 }
             }
         }
@@ -201,9 +222,10 @@ impl Board {
     fn check_win(&self) -> bool {
         for col in 0..self.width {
             for row in 0..self.height {
+                let pos = TilePos { col, row };
                 // if there is a safe tile yet to be uncovered, haven't won yet
-                let safe = !self.bomb(col, row);
-                match self.tile_state(col, row) {
+                let safe = !self.bomb(pos);
+                match self.tile_state(pos) {
                     TileState::Covered | TileState::Flagged => {
                         if safe {
                             return false;
@@ -218,35 +240,29 @@ impl Board {
 
     pub fn apply_action(
         &mut self,
-        Action {
-            col,
-            row,
-            action_type,
-        }: Action,
+        Action { pos, action_type }: Action,
     ) -> ActionResult {
-        assert!(col < self.width);
-        assert!(row < self.height);
-        match (self.tile_state(col, row), action_type) {
+        match (self.tile_state(pos), action_type) {
             // flag
             (TileState::Covered, ActionType::Flag) => {
-                self.set(col, row, TileState::Flagged);
+                self.set(pos, TileState::Flagged);
                 self.num_bombs_left -= 1;
             }
             // unflag
             (TileState::Flagged, ActionType::Flag) => {
-                self.set(col, row, TileState::Covered);
+                self.set(pos, TileState::Covered);
                 self.num_bombs_left += 1;
             }
             // uncover
             (_, ActionType::Uncover) => {
                 if !self.first_uncovered {
-                    self.uncover_first(col, row);
+                    self.uncover_first(pos);
                     self.first_uncovered = true;
-                } else if self.bombs[self.index(col, row)] {
-                    self.uncover_loss(col, row);
+                } else if self.bombs[self.index(pos)] {
+                    self.uncover_loss(pos);
                     return ActionResult::Lose;
                 } else {
-                    self.uncover_safe(col, row);
+                    self.uncover_safe(pos);
                     if self.check_win() {
                         self.flag_remaining();
                         return ActionResult::Win;

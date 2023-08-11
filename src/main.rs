@@ -93,7 +93,7 @@ fn setup(
 
     for col in 0..GRID_SIZE.0 {
         for row in 0..GRID_SIZE.1 {
-            let tile_sprite = TileSprite { col, row };
+            let tile_sprite = TilePos { col, row };
             let sprite_sheet_index = sprite_sheet_index(TileState::Covered);
             commands.spawn((
                 SpriteSheetBundle {
@@ -179,13 +179,20 @@ fn spawn_padding_piece(
     });
 }
 
-#[derive(Component)]
-pub struct TileSprite {
+#[derive(Component, Debug, PartialEq, Clone, Copy, Eq, Hash)]
+pub struct TilePos {
     col: usize,
     row: usize,
 }
 
-impl TileSprite {
+impl TilePos {
+    pub fn new(col: usize, row: usize, board: &Board) -> Option<TilePos> {
+        (col < board.width() && row < board.height())
+            .then(|| TilePos { col, row })
+    }
+}
+
+impl TilePos {
     fn screen_pos(&self) -> Vec2 {
         let translation_x =
             TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
@@ -213,7 +220,7 @@ fn check_restart(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     app_state: ResMut<State<GameState>>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
     mut record_query: Query<&mut Record>,
 ) {
     let replay = keys.just_pressed(KeyCode::R);
@@ -243,7 +250,7 @@ fn check_action(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     agent_state: ResMut<State<AgentState>>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
     mut record_query: Query<&mut Record>,
 ) {
     let mut board = board_query.get_single_mut().unwrap();
@@ -260,25 +267,21 @@ fn check_action(
             if position.x > EDGE_PADDING && position.y > TOP_PADDING {
                 let col = ((position.x - EDGE_PADDING) / TILE_SIZE) as usize;
                 let row = ((position.y - TOP_PADDING) / TILE_SIZE) as usize;
-                if col < board.width()
-                    && row < board.height()
-                    && !matches!(
-                        board.tile_state(col, row),
+                let pos = TilePos::new(col, row, &board);
+                if let Some(pos) = pos {
+                    if !matches!(
+                        board.tile_state(pos),
                         TileState::UncoveredSafe(_)
-                    )
-                {
-                    let action = Action {
-                        col,
-                        row,
-                        action_type,
-                    };
-                    complete_action(
-                        &mut board,
-                        action,
-                        &mut next_app_state,
-                        &mut tile_sprites_query,
-                        &mut record_query,
-                    );
+                    ) {
+                        let action = Action { pos, action_type };
+                        complete_action(
+                            &mut board,
+                            action,
+                            &mut next_app_state,
+                            &mut tile_sprites_query,
+                            &mut record_query,
+                        );
+                    }
                 }
             }
         }
@@ -351,7 +354,7 @@ fn complete_action(
     board: &mut Board,
     action: Action,
     next_app_state: &mut ResMut<NextState<GameState>>,
-    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TilePos)>,
     record_query: &mut Query<&mut Record>,
 ) -> ActionResult {
     let result = board.apply_action(action);
@@ -379,10 +382,10 @@ fn complete_action(
 
 fn sync_board_with_tile_sprites(
     board: &mut Board,
-    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TileSprite)>,
+    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TilePos)>,
 ) {
-    for (mut sprite, TileSprite { col, row }) in tile_sprites_query {
-        let tile_state = board.tile_state(*col, *row);
+    for (mut sprite, &pos) in tile_sprites_query {
+        let tile_state = board.tile_state(pos);
         let index = sprite_sheet_index(tile_state);
         sprite.index = index;
     }

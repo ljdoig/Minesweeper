@@ -1,20 +1,16 @@
+use crate::TilePos;
+
 use super::*;
 use itertools::Itertools;
 use std::collections::HashMap;
 
-fn subsets(
-    elts: &[(usize, usize)],
-    max_size: usize,
-) -> Vec<Vec<&(usize, usize)>> {
+fn subsets(elts: &[TilePos], max_size: usize) -> Vec<Vec<&TilePos>> {
     (2..=max_size)
         .flat_map(|k| elts.iter().combinations(k))
         .collect()
 }
 
-fn set_difference(
-    this: &Vec<(usize, usize)>,
-    other: &Vec<(usize, usize)>,
-) -> Vec<(usize, usize)> {
+fn set_difference(this: &Vec<TilePos>, other: &Vec<TilePos>) -> Vec<TilePos> {
     this.iter()
         .filter(|x| !other.contains(x))
         .cloned()
@@ -22,8 +18,8 @@ fn set_difference(
 }
 
 fn max_in_subset(
-    tiles: &Vec<(usize, usize)>,
-    max_bombs: &mut HashMap<Vec<(usize, usize)>, u8>,
+    tiles: &Vec<TilePos>,
+    max_bombs: &mut HashMap<Vec<TilePos>, u8>,
 ) -> u8 {
     let mut smallest_max = if let Some(&max) = max_bombs.get(tiles) {
         max
@@ -59,8 +55,8 @@ fn max_in_subset(
 }
 
 fn min_in_subset(
-    tiles: &Vec<(usize, usize)>,
-    min_bombs: &mut HashMap<Vec<(usize, usize)>, u8>,
+    tiles: &Vec<TilePos>,
+    min_bombs: &mut HashMap<Vec<TilePos>, u8>,
 ) -> u8 {
     let mut biggest_min = if let Some(&min) = min_bombs.get(tiles) {
         min
@@ -97,12 +93,9 @@ fn min_in_subset(
 
 pub fn get_subset_bounds(
     board: &Board,
-) -> (
-    HashMap<Vec<(usize, usize)>, u8>,
-    HashMap<Vec<(usize, usize)>, u8>,
-) {
-    let mut min_bombs: HashMap<Vec<(usize, usize)>, u8> = HashMap::new();
-    let mut max_bombs: HashMap<Vec<(usize, usize)>, u8> = HashMap::new();
+) -> (HashMap<Vec<TilePos>, u8>, HashMap<Vec<TilePos>, u8>) {
+    let mut min_bombs: HashMap<Vec<TilePos>, u8> = HashMap::new();
+    let mut max_bombs: HashMap<Vec<TilePos>, u8> = HashMap::new();
     for _ in 0..3 {
         update_subset_bounds(board, &mut min_bombs, &mut max_bombs);
     }
@@ -111,14 +104,15 @@ pub fn get_subset_bounds(
 
 fn update_subset_bounds(
     board: &Board,
-    min_bombs: &mut HashMap<Vec<(usize, usize)>, u8>,
-    max_bombs: &mut HashMap<Vec<(usize, usize)>, u8>,
+    min_bombs: &mut HashMap<Vec<TilePos>, u8>,
+    max_bombs: &mut HashMap<Vec<TilePos>, u8>,
 ) {
     for col in 0..board.width() {
         for row in 0..board.height() {
-            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
-                let n = n - num_bombs_around(board, col, row);
-                let covered = covered_neighbours(board, col, row);
+            let pos = TilePos { col, row };
+            if let TileState::UncoveredSafe(n) = board.tile_state(pos) {
+                let n = n - num_bombs_around(board, pos);
+                let covered = covered_neighbours(board, pos);
                 let num_covered = covered.len();
                 for subset in subsets(&covered, num_covered) {
                     let subset = subset.iter().cloned().cloned().collect_vec();
@@ -171,15 +165,16 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
     (0..board.width())
         .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
-            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
-                Some((col, row, n))
+            let pos = TilePos { col, row };
+            if let TileState::UncoveredSafe(n) = board.tile_state(pos) {
+                Some((pos, n))
             } else {
                 None
             }
         })
-        .for_each(|(col, row, n)| {
-            let n = n - num_bombs_around(board, col, row);
-            let covered = covered_neighbours(board, col, row);
+        .for_each(|(pos, n)| {
+            let n = n - num_bombs_around(board, pos);
+            let covered = covered_neighbours(board, pos);
             let num_covered = covered.len();
             if num_covered == 0 {
                 return;
@@ -194,12 +189,8 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 if max + rest_size == n {
                     covered
                         .iter()
-                        .filter(|x| !subset.contains(x))
-                        .map(|(col, row)| Action {
-                            col: *col,
-                            row: *row,
-                            action_type: ActionType::Flag,
-                        })
+                        .filter(|x| !subset.contains(&x))
+                        .map(|&pos| Action::flag(pos))
                         .for_each(|x| output.push(x));
                 }
 
@@ -211,12 +202,8 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 if min == n {
                     covered
                         .iter()
-                        .filter(|x| !subset.contains(x))
-                        .map(|(col, row)| Action {
-                            col: *col,
-                            row: *row,
-                            action_type: ActionType::Uncover,
-                        })
+                        .filter(|x| !subset.contains(&x))
+                        .map(|&pos| Action::uncover(pos))
                         .for_each(|x| output.push(x));
                 }
             }

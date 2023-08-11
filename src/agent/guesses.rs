@@ -1,11 +1,10 @@
+use crate::TilePos;
+
 use super::*;
 use itertools::Itertools;
 use std::time::Instant;
 
-fn tile_vec_to_u32(
-    tile_vec: &Vec<&(usize, usize)>,
-    covered: &Vec<(usize, usize)>,
-) -> u32 {
+fn tile_vec_to_u32(tile_vec: &Vec<&TilePos>, covered: &Vec<TilePos>) -> u32 {
     let mut tracker: u32 = 0;
     for (i, covered_tile) in covered.iter().enumerate() {
         if tile_vec.contains(&covered_tile) {
@@ -15,10 +14,7 @@ fn tile_vec_to_u32(
     tracker
 }
 
-fn u32_to_tile_vec(
-    bits: &u32,
-    covered: &Vec<(usize, usize)>,
-) -> Vec<(usize, usize)> {
+fn u32_to_tile_vec(bits: &u32, covered: &Vec<TilePos>) -> Vec<TilePos> {
     let mut tile_vec = Vec::with_capacity(bits.count_ones() as usize);
     for (i, &covered_tile) in covered.iter().enumerate() {
         if bits & (1 << i) != 0 {
@@ -30,15 +26,16 @@ fn u32_to_tile_vec(
 
 fn get_boundary_constraints(
     board: &Board,
-    covered: &Vec<(usize, usize)>,
+    covered: &Vec<TilePos>,
 ) -> Vec<(u8, u32)> {
     (0..board.width())
         .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
-            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
-                let num_bombs = num_bombs_around(board, col, row);
+            let pos = TilePos { col, row };
+            if let TileState::UncoveredSafe(n) = board.tile_state(pos) {
+                let num_bombs = num_bombs_around(board, pos);
                 let n = n - num_bombs;
-                let covered_neighbours = covered_neighbours(board, col, row);
+                let covered_neighbours = covered_neighbours(board, pos);
                 if !covered_neighbours.is_empty() {
                     let covered_neighbours_u32 = tile_vec_to_u32(
                         &covered_neighbours.iter().collect(),
@@ -53,8 +50,8 @@ fn get_boundary_constraints(
 }
 
 fn get_safety_probability(
-    tile: &(usize, usize),
-    legal_bomb_cases: &Vec<Vec<(usize, usize)>>,
+    tile: &TilePos,
+    legal_bomb_cases: &Vec<Vec<TilePos>>,
 ) -> f64 {
     legal_bomb_cases
         .iter()
@@ -64,7 +61,7 @@ fn get_safety_probability(
 }
 
 fn get_high_probability_guess_all_covered(
-    all_covered: Vec<(usize, usize)>,
+    all_covered: Vec<TilePos>,
     board: &Board,
 ) -> Action {
     // generate and test possible locations of bombs
@@ -72,7 +69,7 @@ fn get_high_probability_guess_all_covered(
     let boundary_constraints = get_boundary_constraints(board, &all_covered);
     let total_num_bombs = board.num_bombs_left() as u32;
     let max_val = ((1_u64 << all_covered.len()) - 1) as u32;
-    let legal_bomb_cases: Vec<Vec<(usize, usize)>> = (0..=max_val)
+    let legal_bomb_cases: Vec<Vec<TilePos>> = (0..=max_val)
         .into_iter()
         .filter_map(|bombs| {
             if bombs.count_ones() != total_num_bombs {
@@ -101,11 +98,7 @@ fn get_high_probability_guess_all_covered(
         .unwrap();
     let tile_safety_prob = get_safety_probability(&tile, &legal_bomb_cases);
     println!("Best odds: {:2.1}%", tile_safety_prob * 100.0);
-    Action {
-        col: tile.0,
-        row: tile.1,
-        action_type: ActionType::Uncover,
-    }
+    Action::uncover(*tile)
 }
 
 fn average_length<T>(vecs: Vec<Vec<T>>) -> f64 {
@@ -114,8 +107,8 @@ fn average_length<T>(vecs: Vec<Vec<T>>) -> f64 {
 }
 
 fn get_high_probability_guess_covered_boundary(
-    covered_boundary: Vec<(usize, usize)>,
-    all_covered: Vec<(usize, usize)>,
+    covered_boundary: Vec<TilePos>,
+    all_covered: Vec<TilePos>,
     board: &Board,
 ) -> Action {
     // generate and test possible bombs positions around boundary
@@ -123,7 +116,7 @@ fn get_high_probability_guess_covered_boundary(
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
     let max_val = ((1_u64 << covered_boundary.len()) - 1) as u32;
-    let legal_bomb_cases: Vec<Vec<(usize, usize)>> = (0..=max_val)
+    let legal_bomb_cases: Vec<Vec<TilePos>> = (0..=max_val)
         .into_iter()
         .filter_map(|bombs| {
             for (n, covered_neighbours) in &boundary_constraints {
@@ -168,7 +161,7 @@ fn get_high_probability_guess_covered_boundary(
         num_non_boundary_covered
     );
 
-    let (col, row) = if boundary_safety_prob > non_boundary_safety_prob {
+    let pos = if boundary_safety_prob > non_boundary_safety_prob {
         println!(
             "Best odds are from boundary: {:2.1}% -> {:?}",
             boundary_safety_prob * 100.0,
@@ -187,25 +180,21 @@ fn get_high_probability_guess_covered_boundary(
         );
         non_boundary_tile
     };
-
-    Action {
-        col: *col,
-        row: *row,
-        action_type: ActionType::Uncover,
-    }
+    Action::uncover(*pos)
 }
 
 pub fn get_high_probability_guess(board: &Board) -> Action {
     // if we're out of ideas, just permute until we find a compatible option
     let all_covered = (0..board.width())
         .cartesian_product(0..board.height())
-        .filter(|(col, row)| board.tile_state(*col, *row) == TileState::Covered)
+        .filter_map(|(col, row)| {
+            let pos = TilePos { col, row };
+            (board.tile_state(pos) == TileState::Covered).then(|| pos)
+        })
         .collect_vec();
     let covered_boundary = all_covered
         .iter()
-        .filter(|(col, row)| {
-            !uncovered_neighbours(board, *col, *row).is_empty()
-        })
+        .filter(|&&pos| !uncovered_neighbours(board, pos).is_empty())
         .cloned()
         .collect_vec();
 
@@ -221,13 +210,13 @@ pub fn get_high_probability_guess(board: &Board) -> Action {
 
     // to avoid combinatorics, we just take the tile with the best odds
     let (min_bombs, max_bombs) = deductions::get_subset_bounds(board);
-    let (col, row) = covered_boundary
+    let pos = covered_boundary
         .iter()
-        .min_by_key(|(col, row)| {
+        .min_by_key(|pos| {
             min_bombs
                 .iter()
                 .filter(|(&ref subset, _)| {
-                    subset.contains(&(*col, *row))
+                    subset.contains(pos)
                         && min_bombs.get(subset) == max_bombs.get(subset)
                 })
                 .map(|(subset, n)| {
@@ -237,10 +226,6 @@ pub fn get_high_probability_guess(board: &Board) -> Action {
                 .unwrap()
         })
         .unwrap();
-    println!("Guessing: {col}, {row}");
-    return Action {
-        col: *col,
-        row: *row,
-        action_type: ActionType::Uncover,
-    };
+    println!("Guessing: ({}, {})", pos.col, pos.row);
+    Action::uncover(*pos)
 }
