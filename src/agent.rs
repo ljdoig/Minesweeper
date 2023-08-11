@@ -375,54 +375,28 @@ fn u32_to_tile_vec(
     tile_vec
 }
 
-fn get_legal_bombs(
+fn get_boundary_constraints(
+    board: &Board,
     covered: &Vec<(usize, usize)>,
-    bomb_cases: Vec<Vec<&(usize, usize)>>,
-    boundary_constraints: Vec<(u8, Vec<(usize, usize)>)>,
-) -> Vec<Vec<(usize, usize)>> {
-    let start = Instant::now();
-
-    // turn `covered` and `boundary_constraints` into u32
-    let boundary_constraints_u32 = boundary_constraints
-        .iter()
-        .map(|(n, covered_neighbours)| {
-            (
-                n,
-                tile_vec_to_u32(&covered_neighbours.iter().collect(), covered),
-            )
-        })
-        .collect_vec();
-
-    println!(
-        "Convert boundary contraints to u32: {}",
-        start.elapsed().as_secs_f32()
-    );
-    let start = Instant::now();
-    let combinations_u32 = bomb_cases
-        .iter()
-        .map(|bombs| tile_vec_to_u32(&bombs.iter().cloned().collect(), covered))
-        .collect_vec();
-
-    println!(
-        "Convert combinations to u32: {}",
-        start.elapsed().as_secs_f32()
-    );
-    let start = Instant::now();
-    let mut legal_bomb_cases = vec![];
-    'cases: for bombs in combinations_u32 {
-        for (n, covered_neighbours) in &boundary_constraints_u32 {
-            let num_bombs = (bombs & covered_neighbours).count_ones();
-            if **n != num_bombs as u8 {
-                continue 'cases;
+) -> Vec<(u8, u32)> {
+    (0..board.width())
+        .cartesian_product(0..board.height())
+        .filter_map(|(col, row)| {
+            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
+                let num_bombs = num_bombs_around(board, col, row);
+                let n = n - num_bombs;
+                let covered_neighbours = covered_neighbours(board, col, row);
+                if !covered_neighbours.is_empty() {
+                    let covered_neighbours_u32 = tile_vec_to_u32(
+                        &covered_neighbours.iter().collect(),
+                        covered,
+                    );
+                    return Some((n, covered_neighbours_u32));
+                }
             }
-        }
-        legal_bomb_cases.push(u32_to_tile_vec(&bombs, covered));
-    }
-    println!(
-        "Iterate combinations of bombs: {}",
-        start.elapsed().as_secs_f32()
-    );
-    legal_bomb_cases
+            None
+        })
+        .collect()
 }
 
 fn get_safety_probability(
@@ -438,18 +412,32 @@ fn get_safety_probability(
 
 fn get_high_probability_guess_all_covered(
     all_covered: Vec<(usize, usize)>,
-    boundary_constraints: Vec<(u8, Vec<(usize, usize)>)>,
-    num_bombs: u8,
+    board: &Board,
 ) -> Action {
-    // generate and test possible bombs positions
+    // generate and test possible locations of bombs
     let start = Instant::now();
-    let bomb_cases = all_covered
-        .iter()
-        .combinations(num_bombs as usize)
-        .collect_vec();
-    println!("Generate bomb cases: {}", start.elapsed().as_secs_f32());
-    let legal_bomb_cases =
-        get_legal_bombs(&all_covered, bomb_cases, boundary_constraints);
+    let boundary_constraints = get_boundary_constraints(board, &all_covered);
+    let total_num_bombs = board.num_bombs_left() as u32;
+    let mut legal_bomb_cases = vec![];
+    let max_val = (1_u64 << all_covered.len()) - 1;
+    'cases: for bombs in 0..=max_val as u32 {
+        if bombs.count_ones() != total_num_bombs {
+            continue;
+        }
+        for (n, covered_neighbours) in &boundary_constraints {
+            let num_bombs = (bombs & covered_neighbours).count_ones() as u8;
+            if *n != num_bombs {
+                continue 'cases;
+            }
+        }
+        legal_bomb_cases.push(u32_to_tile_vec(&bombs, &all_covered));
+    }
+    println!(
+        "Iterating combinations of bombs took: {:.2}s ({} tiles with {} bombs)",
+        start.elapsed().as_secs_f32(),
+        all_covered.len(),
+        total_num_bombs
+    );
     let tile = all_covered
         .iter()
         .max_by_key(|tile| {
@@ -473,18 +461,29 @@ fn average_length<T>(vecs: Vec<Vec<T>>) -> f64 {
 fn get_high_probability_guess_covered_boundary(
     covered_boundary: Vec<(usize, usize)>,
     all_covered: Vec<(usize, usize)>,
-    boundary_constraints: Vec<(u8, Vec<(usize, usize)>)>,
-    num_bombs: u8,
+    board: &Board,
 ) -> Action {
     // generate and test possible bombs positions around boundary
     let start = Instant::now();
-    let bomb_cases = subsets(&covered_boundary, covered_boundary.len());
-    println!("Generate bomb cases: {}", start.elapsed().as_secs_f32());
-    let legal_bomb_cases =
-        get_legal_bombs(&covered_boundary, bomb_cases, boundary_constraints);
+    let boundary_constraints =
+        get_boundary_constraints(board, &covered_boundary);
+    let mut legal_bomb_cases = vec![];
+    'cases: for bombs in 0..1 << covered_boundary.len() {
+        for (n, covered_neighbours) in &boundary_constraints {
+            let num_bombs = (bombs & covered_neighbours).count_ones() as u8;
+            if *n != num_bombs {
+                continue 'cases;
+            }
+        }
+        legal_bomb_cases.push(u32_to_tile_vec(&bombs, &covered_boundary));
+    }
+    println!(
+        "Iterating combinations of bombs took: {:.2}s ({} tiles)",
+        start.elapsed().as_secs_f32(),
+        covered_boundary.len()
+    );
 
     // evaluate legal bomb cases around boundary
-    let start = Instant::now();
     let boundary_tile = covered_boundary
         .iter()
         .max_by_key(|tile| {
@@ -500,7 +499,7 @@ fn get_high_probability_guess_covered_boundary(
 
     // consider if there are better odds for a non-boundary tile
     let num_non_boundary_bombs =
-        num_bombs as f64 - average_length(legal_bomb_cases);
+        board.num_bombs_left() as f64 - average_length(legal_bomb_cases);
     let num_non_boundary_covered = all_covered.len() - covered_boundary.len();
     let non_boundary_safety_prob =
         1.0 - num_non_boundary_bombs / num_non_boundary_covered as f64;
@@ -531,10 +530,6 @@ fn get_high_probability_guess_covered_boundary(
         non_boundary_tile
     };
 
-    println!(
-        "Calculate with legal bombs: {}",
-        start.elapsed().as_secs_f32()
-    );
     Action {
         col: *col,
         row: *row,
@@ -544,20 +539,6 @@ fn get_high_probability_guess_covered_boundary(
 
 pub fn get_high_probability_guess(board: &Board) -> Action {
     // if we're out of ideas, just permute until we find a compatible option
-    let boundary_constraints: Vec<_> = (0..board.width())
-        .cartesian_product(0..board.height())
-        .filter_map(|(col, row)| {
-            if let TileState::UncoveredSafe(n) = board.tile_state(col, row) {
-                let num_bombs = num_bombs_around(board, col, row);
-                let n = n - num_bombs;
-                let covered_neighbours = covered_neighbours(board, col, row);
-                if !covered_neighbours.is_empty() {
-                    return Some((n, covered_neighbours));
-                }
-            }
-            None
-        })
-        .collect();
     let all_covered = (0..board.width())
         .cartesian_product(0..board.height())
         .filter(|(col, row)| board.tile_state(*col, *row) == TileState::Covered)
@@ -570,18 +551,13 @@ pub fn get_high_probability_guess(board: &Board) -> Action {
         .cloned()
         .collect_vec();
 
-    if all_covered.len() <= 25 {
-        return get_high_probability_guess_all_covered(
-            all_covered,
-            boundary_constraints,
-            board.num_bombs_left() as u8,
-        );
-    } else if covered_boundary.len() <= 20 {
+    if all_covered.len() <= 32 {
+        return get_high_probability_guess_all_covered(all_covered, board);
+    } else if covered_boundary.len() <= 26 {
         return get_high_probability_guess_covered_boundary(
             covered_boundary,
             all_covered,
-            boundary_constraints,
-            board.num_bombs_left() as u8,
+            board,
         );
     }
 
