@@ -179,7 +179,9 @@ fn spawn_padding_piece(
     });
 }
 
-#[derive(Component, Debug, PartialEq, Clone, Copy, Eq, Hash)]
+#[derive(
+    Component, Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord,
+)]
 pub struct TilePos {
     col: usize,
     row: usize,
@@ -189,6 +191,14 @@ impl TilePos {
     pub fn new(col: usize, row: usize, board: &Board) -> Option<TilePos> {
         (col < board.width() && row < board.height())
             .then(|| TilePos { col, row })
+    }
+
+    pub fn squared_distance(self, other: TilePos) -> usize {
+        let col1 = self.col as isize;
+        let row1 = self.row as isize;
+        let col2 = other.col as isize;
+        let row2 = other.row as isize;
+        ((col1 - col2).pow(2) + (row1 - row2).pow(2)) as usize
     }
 }
 

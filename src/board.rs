@@ -119,8 +119,7 @@ impl Board {
         // maybe try and select a tile that is closest to a boundary tile
         // self.seed = 2148938678238164413;
 
-        // after mega  iterate  practice
-        // self.seed = 620820839599817631;
+        // self.seed = 11056703485085464763;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
