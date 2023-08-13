@@ -8,7 +8,7 @@ use board::*;
 
 mod agent;
 
-const WINDOW_HEIGHT: f32 = 750.0;
+const WINDOW_HEIGHT: f32 = 500.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SIZE: f32 = 12.0;
 const TOP_PADDING_SIZE: f32 = 12.0;
@@ -288,7 +288,9 @@ fn check_action(
     }
 
     // use bot
-    if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space)
+    // || true
+    {
         next_agent_state.set(AgentState::Thinking)
     }
     if matches!(agent_state.get(), AgentState::Thinking) {

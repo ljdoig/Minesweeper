@@ -116,10 +116,11 @@ impl Board {
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
-        // maybe if you can split the boundary up in to islands, you can solve them spearately
-        // self.seed = 4488024197040602121;
         // maybe try and select a tile that is closest to a boundary tile
         // self.seed = 2148938678238164413;
+
+        // after mega  iterate  practice
+        // self.seed = 620820839599817631;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
