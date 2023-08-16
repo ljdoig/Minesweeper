@@ -2,7 +2,7 @@ use crate::TilePos;
 
 use super::*;
 use itertools::Itertools;
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 fn case_weight(
     num_bombs_omitted: u32,
@@ -169,7 +169,7 @@ fn get_high_probability_guess(
             })
             .collect_vec();
     println!(
-        "Generating legal arrangements of bombs took: {:.2}s ({} scenario(s) from {} tiles)",
+        "Generating legal arrangements of bombs took: {:.5}s ({} scenario(s) from {} tiles)",
         start.elapsed().as_secs_f32(),
         legal_bomb_cases.len(),
         covered_boundary.len()
@@ -181,6 +181,7 @@ fn get_high_probability_guess(
         .min()
         .unwrap();
     let mut total_weights = 0.0;
+    let mut bombs_omitted_count: HashMap<u32, (u32, f64)> = HashMap::new();
     let weighted_bomb_cases = legal_bomb_cases
         .iter()
         .map(|bombs| {
@@ -190,6 +191,11 @@ fn get_high_probability_guess(
                 num_non_boundary_covered,
                 min_bombs_omitted,
             );
+            let count = match bombs_omitted_count.get(&num_bombs_omitted) {
+                Some(&(count, _)) => count + 1,
+                None => 1,
+            };
+            bombs_omitted_count.insert(num_bombs_omitted, (count, weight));
             total_weights += weight;
             (bombs, weight)
         })
@@ -201,7 +207,7 @@ fn get_high_probability_guess(
         .enumerate()
         .map(|(i, tile)| {
             let mask = 1 << i;
-            let total_unsafe_weights = weighted_bomb_cases.iter().fold(
+            let unsafe_weights = weighted_bomb_cases.iter().fold(
                 0.0,
                 |mut running_total, (&bombs, weight)| {
                     if bombs & mask > 0 {
@@ -210,7 +216,7 @@ fn get_high_probability_guess(
                     running_total
                 },
             );
-            let proportion_safe = 1.0 - total_unsafe_weights / total_weights;
+            let proportion_safe = 1.0 - unsafe_weights / total_weights;
             (tile, proportion_safe)
         })
         .max_by(|(_, proportion_safe1), (_, proportion_safe2)| {
@@ -219,47 +225,32 @@ fn get_high_probability_guess(
         .unwrap();
 
     // consider if there are better odds for a non-boundary tile
-    let non_boundary_scenario = all_covered
-        .iter()
-        .filter(|tile| !covered_boundary.contains(&tile))
-        .map(|tile| {
-            let total_unsafe_weights = weighted_bomb_cases.iter().fold(
-                0.0,
-                |mut running_total, (bombs, weight)| {
-                    let num_non_boundary_bombs =
-                        total_num_bombs_left - bombs.count_ones();
-                    if num_non_boundary_bombs > 0 {
-                        running_total += weight * num_non_boundary_bombs as f64
-                            / num_non_boundary_covered as f64;
-                    }
-                    running_total
-                },
-            );
-            let proportion_safe = 1.0 - total_unsafe_weights / total_weights;
-            (tile, proportion_safe)
-        })
-        .max_by(|(_, proportion_safe1), (_, proportion_safe2)| {
-            proportion_safe1.total_cmp(proportion_safe2)
-        });
-
-    let non_boundary_safety_prob =
-        if let Some((non_boundary_tile, non_boundary_safety_prob)) =
-            non_boundary_scenario
-        {
-            println!(
-                "Best odds on boundary:           {:3.1}% -> {:?}",
-                boundary_safety_prob * 100.0,
-                boundary_tile,
-            );
-            println!(
-                "Best odds not on boundary:       {:3.1}% -> {:?}",
-                non_boundary_safety_prob * 100.0,
-                non_boundary_tile,
-            );
-            non_boundary_safety_prob
-        } else {
-            0.0
-        };
+    let non_boundary_safety_prob = if num_non_boundary_covered > 0 {
+        let unsafe_weights = bombs_omitted_count.iter().fold(
+            0.0,
+            |mut running_total, (&num_bombs_omitted, &(count, weight))| {
+                if num_bombs_omitted > 0 {
+                    let tile_prob = num_bombs_omitted as f64
+                        / num_non_boundary_covered as f64;
+                    running_total += count as f64 * weight * tile_prob;
+                }
+                running_total
+            },
+        );
+        let non_boundary_safety_prob = 1.0 - unsafe_weights / total_weights;
+        println!(
+            "Best odds on boundary:           {:3.1}% -> {:?}",
+            boundary_safety_prob * 100.0,
+            boundary_tile,
+        );
+        println!(
+            "Best odds not on boundary:       {:3.1}%",
+            non_boundary_safety_prob * 100.0,
+        );
+        non_boundary_safety_prob
+    } else {
+        0.0
+    };
 
     let &tile = if boundary_safety_prob > non_boundary_safety_prob {
         println!(
@@ -269,9 +260,11 @@ fn get_high_probability_guess(
         );
         boundary_tile
     } else {
-        // unwrap here because non_boundary_tile must exist to have high prob
-        let (non_boundary_tile, non_boundary_safety_prob) =
-            non_boundary_scenario.unwrap();
+        // unwrap here because non_boundary_tile must exist to have higher prob
+        let non_boundary_tile = all_covered
+            .iter()
+            .find(|tile| !covered_boundary.contains(tile))
+            .unwrap();
         println!(
             "Best odds are from non-boundary: {:3.1}% -> {:?}",
             non_boundary_safety_prob * 100.0,
@@ -280,7 +273,7 @@ fn get_high_probability_guess(
         non_boundary_tile
     };
     println!(
-        "Analysing arrangements of bombs took:        {:.2}s\n",
+        "Analysing arrangements of bombs took:        {:.5}s\n",
         start.elapsed().as_secs_f32(),
     );
     Action::uncover(tile)
