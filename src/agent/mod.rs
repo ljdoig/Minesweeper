@@ -4,7 +4,7 @@ pub mod deductions;
 pub mod guesses;
 
 use deductions::get_non_trivial_actions;
-use guesses::get_high_probability_guess;
+use guesses::make_guess;
 
 pub fn num_bombs_around(board: &Board, pos: TilePos) -> u8 {
     board
@@ -54,7 +54,7 @@ pub fn get_all_actions(board: &Board) -> Vec<Action> {
         output.append(&mut get_non_trivial_actions(board));
     }
     if output.is_empty() {
-        output.push(get_high_probability_guess(board));
+        output.push(make_guess(board));
     }
     deduplicate(output)
 }

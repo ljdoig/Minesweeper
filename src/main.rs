@@ -299,7 +299,7 @@ fn check_action(
 
     // use bot
     if keys.just_pressed(KeyCode::Space)
-    // || true
+    //|| true
     {
         next_agent_state.set(AgentState::Thinking)
     }
@@ -351,7 +351,7 @@ fn check_action(
         }
     }
     if keys.just_pressed(KeyCode::Key3) {
-        let action = agent::guesses::get_high_probability_guess(&board);
+        let action = agent::guesses::make_guess(&board);
         complete_action(
             &mut board,
             action,
@@ -360,6 +360,16 @@ fn check_action(
             &mut record_query,
         );
     }
+}
+
+fn end_game(
+    next_app_state: &mut ResMut<NextState<GameState>>,
+    record: &Record,
+) {
+    let win_rate =
+        record.win as f64 / (record.win + record.loss + record.dnf) as f64;
+    println!("{:?} ({:.2}%)", record, 100.0 * win_rate);
+    next_app_state.set(GameState::GameOver);
 }
 
 fn complete_action(
@@ -375,17 +385,15 @@ fn complete_action(
         ActionResult::Win => {
             record.win += 1;
             println!("You won!");
-            println!("{:?}", *record);
-            next_app_state.set(GameState::GameOver);
+            end_game(next_app_state, &record);
         }
         ActionResult::Lose => {
             record.loss += 1;
             println!("You lost...");
-            println!("{:?}", *record);
-            next_app_state.set(GameState::GameOver);
+            end_game(next_app_state, &record);
         }
         ActionResult::Continue => {
-            println!("Num bombs left: {}", board.num_bombs_left());
+            // println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
     sync_board_with_tile_sprites(board, tile_sprites_query);
