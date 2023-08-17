@@ -59,12 +59,12 @@ fn validate(
 }
 
 fn tile_vec_to_u128(
-    tile_vec: &Vec<&TilePos>,
-    covered_boundary: &Vec<TilePos>,
+    tile_vec: &[TilePos],
+    covered_boundary: &[TilePos],
 ) -> u128 {
     let mut tracker: u128 = 0;
     for (i, covered_tile) in covered_boundary.iter().enumerate() {
-        if tile_vec.contains(&covered_tile) {
+        if tile_vec.contains(covered_tile) {
             tracker |= 1 << i;
         }
     }
@@ -73,7 +73,7 @@ fn tile_vec_to_u128(
 
 fn get_boundary_constraints(
     board: &Board,
-    covered_boundary: &Vec<TilePos>,
+    covered_boundary: &[TilePos],
 ) -> Vec<(u8, u128)> {
     (0..board.width())
         .cartesian_product(0..board.height())
@@ -84,10 +84,8 @@ fn get_boundary_constraints(
                 if !covered_neighbours.is_empty() {
                     let num_bombs = num_bombs_around(board, pos);
                     let n = n - num_bombs;
-                    let covered_neighbours_u128 = tile_vec_to_u128(
-                        &covered_neighbours.iter().collect(),
-                        covered_boundary,
-                    );
+                    let covered_neighbours_u128 =
+                        tile_vec_to_u128(&covered_neighbours, covered_boundary);
                     return Some((n, covered_neighbours_u128));
                 }
             }
@@ -148,6 +146,7 @@ fn get_high_probability_guess(
 ) -> Action {
     // generate and test possible bombs positions around boundary
     let start = Instant::now();
+    let covered_boundary = sensible_ordering(covered_boundary);
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
     let total_num_bombs_left = board.num_bombs_left() as u32;
@@ -156,16 +155,13 @@ fn get_high_probability_guess(
     let legal_bomb_cases =
         legal_bomb_candidates(&boundary_constraints, covered_boundary.len())
             .into_iter()
-            .filter_map(|bombs| {
+            .filter(|bombs| {
                 // check global constraint of total number of bombs
                 let num_bombs = bombs.count_ones();
                 let max_bombs = total_num_bombs_left;
                 let min_bombs = total_num_bombs_left
                     .saturating_sub(num_non_boundary_covered);
-                if !(min_bombs <= num_bombs && num_bombs <= max_bombs) {
-                    return None;
-                }
-                Some(bombs)
+                min_bombs <= num_bombs && num_bombs <= max_bombs
             })
             .collect_vec();
     println!(
@@ -305,7 +301,7 @@ pub fn make_guess(board: &Board) -> Action {
         .cartesian_product(0..board.height())
         .filter_map(|(col, row)| {
             let pos = TilePos { col, row };
-            (board.tile_state(pos) == TileState::Covered).then(|| pos)
+            (board.tile_state(pos) == TileState::Covered).then_some(pos)
         })
         .collect_vec();
     let covered_boundary = all_covered
@@ -319,11 +315,10 @@ pub fn make_guess(board: &Board) -> Action {
         return Action::uncover(tile);
     }
 
-    let covered_boundary = sensible_ordering(covered_boundary);
     if covered_boundary.len() <= 128 {
         return get_high_probability_guess(
-            covered_boundary.clone(),
-            all_covered.clone(),
+            covered_boundary,
+            all_covered,
             board,
         );
     }
@@ -335,7 +330,7 @@ pub fn make_guess(board: &Board) -> Action {
         .min_by_key(|pos| {
             min_bombs
                 .iter()
-                .filter(|(&ref subset, _)| {
+                .filter(|&(subset, _)| {
                     subset.contains(pos)
                         && min_bombs.get(subset) == max_bombs.get(subset)
                 })

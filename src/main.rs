@@ -190,7 +190,7 @@ pub struct TilePos {
 impl TilePos {
     pub fn new(col: usize, row: usize, board: &Board) -> Option<TilePos> {
         (col < board.width() && row < board.height())
-            .then(|| TilePos { col, row })
+            .then_some(TilePos { col, row })
     }
 
     pub fn squared_distance(self, other: TilePos) -> usize {
@@ -299,7 +299,7 @@ fn check_action(
 
     // use bot
     if keys.just_pressed(KeyCode::Space)
-    //|| true
+    // || true
     {
         next_agent_state.set(AgentState::Thinking)
     }

@@ -117,7 +117,15 @@ impl Board {
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
         // longest
+        // self.seed = 10126855127364932031; // crazy
         // self.seed = 11754556799429264090;
+        // self.seed = 16027846133366108016;
+
+        // long despite few combos
+        // self.seed = 2290364603689077606;
+
+        // short despite many combos!
+        self.seed = 14933864182572305104;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement

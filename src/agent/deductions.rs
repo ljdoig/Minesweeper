@@ -10,7 +10,7 @@ fn subsets(elts: &[TilePos], max_size: usize) -> Vec<Vec<&TilePos>> {
         .collect()
 }
 
-fn set_difference(this: &Vec<TilePos>, other: &Vec<TilePos>) -> Vec<TilePos> {
+fn set_difference(this: &[TilePos], other: &[TilePos]) -> Vec<TilePos> {
     this.iter()
         .filter(|x| !other.contains(x))
         .cloned()
@@ -34,7 +34,7 @@ fn max_in_subset(
     // recursive case: use information about any subsets to further narrow the
     // bounds
     let max_size = tiles.len().saturating_sub(1);
-    for subset in subsets(&tiles, max_size) {
+    for subset in subsets(tiles, max_size) {
         let subset = subset.iter().copied().copied().collect_vec();
         if let Some(&sub_max) = max_bombs.get(&subset) {
             let rest = set_difference(tiles, &subset);
@@ -71,7 +71,7 @@ fn min_in_subset(
     // recursive case: use information about any subsets to further narrow the
     // bounds
     let max_size = tiles.len().saturating_sub(1);
-    for subset in subsets(&tiles, max_size) {
+    for subset in subsets(tiles, max_size) {
         let subset = subset.iter().cloned().cloned().collect_vec();
         if let Some(&sub_min) = min_bombs.get(&subset) {
             let rest = set_difference(tiles, &subset);
@@ -189,7 +189,7 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 if max + rest_size == n {
                     covered
                         .iter()
-                        .filter(|x| !subset.contains(&x))
+                        .filter(|x| !subset.contains(x))
                         .map(|&pos| Action::flag(pos))
                         .for_each(|x| output.push(x));
                 }
@@ -202,7 +202,7 @@ pub fn get_non_trivial_actions(board: &Board) -> Vec<Action> {
                 if min == n {
                     covered
                         .iter()
-                        .filter(|x| !subset.contains(&x))
+                        .filter(|x| !subset.contains(x))
                         .map(|&pos| Action::uncover(pos))
                         .for_each(|x| output.push(x));
                 }
