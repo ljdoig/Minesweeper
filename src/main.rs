@@ -1,7 +1,8 @@
-use std::f32::consts::PI;
-
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
+use std::env;
+use std::f32::consts::PI;
+use std::time::Instant;
 
 pub mod board;
 use board::*;
@@ -25,6 +26,12 @@ const WINDOW_WIDTH: f32 = BOARD_WIDTH + 2.0 * EDGE_PADDING;
 const BOARD_HEIGHT: f32 = WINDOW_HEIGHT - TOP_PADDING - EDGE_PADDING;
 
 fn main() {
+    let args: Vec<_> = env::args().collect();
+    if args.len() > 1 {
+        let n: usize = args[1].parse().unwrap();
+        simulate_n_games(n);
+        return;
+    }
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.7569, 0.7569, 0.7569)))
         .add_plugins((
@@ -295,7 +302,7 @@ fn check_action(
         return;
     }
 
-    if keys.just_pressed(KeyCode::S) {
+    if keys.just_pressed(KeyCode::S) && !board.first_uncovered() {
         simulate_n_games(100);
         return;
     }
@@ -365,7 +372,7 @@ fn end_game(record: &mut Record, result: &ActionResult) {
         }
         ActionResult::Lose => {
             record.loss += 1;
-            println!("You won!");
+            println!("You lost");
         }
         ActionResult::Continue => {
             record.dnf += 1;
@@ -417,8 +424,11 @@ fn sync_board_with_tile_sprites(
 fn simulate_n_games(n: usize) {
     println!("Simulating {n} games:\n");
     let mut record = Record::default();
+    let mut longest_game: f32 = 0.0;
+    let start = Instant::now();
     for i in 1..=n {
         let mut board = Board::new(GRID_SIZE);
+        let game_start = Instant::now();
         'game: loop {
             for action in agent::get_all_actions(&board) {
                 let result = board.apply_action(action);
@@ -431,6 +441,18 @@ fn simulate_n_games(n: usize) {
                 }
             }
         }
+        longest_game = longest_game.max(game_start.elapsed().as_secs_f32());
+        println!(
+            "Game {i} finished in {:.2}s (seed: {})",
+            game_start.elapsed().as_secs_f32(),
+            board.seed()
+        );
+        println!(
+            "{:.2}s per game, {:.2}s in total, longest game took {:.2}s",
+            start.elapsed().as_secs_f32() / i as f32,
+            start.elapsed().as_secs_f32(),
+            longest_game,
+        );
         println!(
             "Simulation {:.2}% complete\n",
             100.0 * (i as f64 / n as f64)
