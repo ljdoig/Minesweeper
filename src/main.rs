@@ -47,6 +47,7 @@ fn main() {
         .add_systems(Update, close_on_esc)
         .add_systems(Update, check_restart)
         .add_systems(Update, check_action.run_if(in_state(GameState::Game)))
+        .add_systems(Update, sync_board_with_tile_sprites)
         .run();
 }
 
@@ -230,25 +231,22 @@ fn check_restart(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     app_state: ResMut<State<GameState>>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
     mut record_query: Query<&mut Record>,
 ) {
     let replay = keys.just_pressed(KeyCode::R);
     if keys.just_pressed(KeyCode::Return) || replay
     // || matches!(app_state.get(), GameState::GameOver)
     {
-        let mut board = board_query.get_single_mut().unwrap();
-        let seed = replay.then_some(board.seed());
-        board.reset(seed);
         let mut record = record_query.get_single_mut().unwrap();
-        if let GameState::Game = app_state.get() {
-            record.dnf += 1;
-            println!("{:?}", *record);
+        if matches!(app_state.get(), GameState::Game) {
+            end_game(&mut record, &ActionResult::Continue)
         }
         next_app_state.set(GameState::Game);
         next_agent_state.set(AgentState::Resting);
+        let mut board = board_query.get_single_mut().unwrap();
+        let seed = replay.then_some(board.seed());
+        board.reset(seed);
         println!("Beginning game with {} bombs", board.num_bombs_left());
-        sync_board_with_tile_sprites(&mut board, &mut tile_sprites_query);
     }
 }
 
@@ -260,10 +258,10 @@ fn check_action(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     agent_state: ResMut<State<AgentState>>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
     mut record_query: Query<&mut Record>,
 ) {
     let mut board = board_query.get_single_mut().unwrap();
+    let mut record = record_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
         let action_type = if buttons.just_pressed(MouseButton::Left) {
             Some(ActionType::Uncover)
@@ -288,13 +286,18 @@ fn check_action(
                             &mut board,
                             action,
                             &mut next_app_state,
-                            &mut tile_sprites_query,
-                            &mut record_query,
+                            &mut record,
                         );
                     }
                 }
             }
         }
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::S) {
+        simulate_n_games(100);
+        return;
     }
 
     // use bot
@@ -313,8 +316,7 @@ fn check_action(
                 &mut board,
                 action,
                 &mut next_app_state,
-                &mut tile_sprites_query,
-                &mut record_query,
+                &mut record,
             );
             if result != ActionResult::Continue {
                 next_agent_state.set(AgentState::Resting);
@@ -336,8 +338,7 @@ fn check_action(
                     &mut board,
                     action,
                     &mut next_app_state,
-                    &mut tile_sprites_query,
-                    &mut record_query,
+                    &mut record,
                 );
                 if result != ActionResult::Continue {
                     return;
@@ -352,61 +353,87 @@ fn check_action(
     }
     if keys.just_pressed(KeyCode::Key3) {
         let action = agent::guesses::make_guess(&board);
-        complete_action(
-            &mut board,
-            action,
-            &mut next_app_state,
-            &mut tile_sprites_query,
-            &mut record_query,
-        );
+        complete_action(&mut board, action, &mut next_app_state, &mut record);
     }
 }
 
-fn end_game(
-    next_app_state: &mut ResMut<NextState<GameState>>,
-    record: &Record,
-) {
+fn end_game(record: &mut Record, result: &ActionResult) {
+    match result {
+        ActionResult::Win => {
+            record.win += 1;
+            println!("You won!");
+        }
+        ActionResult::Lose => {
+            record.loss += 1;
+            println!("You won!");
+        }
+        ActionResult::Continue => {
+            record.dnf += 1;
+            println!("You didn't finish the game...");
+        }
+    }
     let win_rate =
         record.win as f64 / (record.win + record.loss + record.dnf) as f64;
-    println!("{:?} ({:.2}%)", record, 100.0 * win_rate);
-    next_app_state.set(GameState::GameOver);
+    println!(
+        "Record: ({}/{}) ({:.2}%)\n",
+        record.win,
+        record.loss,
+        100.0 * win_rate
+    );
 }
 
 fn complete_action(
     board: &mut Board,
     action: Action,
     next_app_state: &mut ResMut<NextState<GameState>>,
-    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TilePos)>,
-    record_query: &mut Query<&mut Record>,
+    record: &mut Record,
 ) -> ActionResult {
     let result = board.apply_action(action);
-    let mut record = record_query.get_single_mut().unwrap();
     match result {
-        ActionResult::Win => {
-            record.win += 1;
-            println!("You won!");
-            end_game(next_app_state, &record);
-        }
-        ActionResult::Lose => {
-            record.loss += 1;
-            println!("You lost...");
-            end_game(next_app_state, &record);
+        ActionResult::Win | ActionResult::Lose => {
+            end_game(record, &result);
+            next_app_state.set(GameState::GameOver);
         }
         ActionResult::Continue => {
             // println!("Num bombs left: {}", board.num_bombs_left());
         }
     }
-    sync_board_with_tile_sprites(board, tile_sprites_query);
     result
 }
 
 fn sync_board_with_tile_sprites(
-    board: &mut Board,
-    tile_sprites_query: &mut Query<(&mut TextureAtlasSprite, &TilePos)>,
+    board_query: Query<&Board>,
+    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
 ) {
-    for (mut sprite, &pos) in tile_sprites_query {
-        let tile_state = board.tile_state(pos);
-        let index = sprite_sheet_index(tile_state);
-        sprite.index = index;
+    if let Ok(board) = board_query.get_single() {
+        for (mut sprite, pos) in &mut tile_sprites_query {
+            let tile_state = board.tile_state(*pos);
+            let index = sprite_sheet_index(tile_state);
+            sprite.index = index;
+        }
+    }
+}
+
+fn simulate_n_games(n: usize) {
+    println!("Simulating {n} games:\n");
+    let mut record = Record::default();
+    for i in 1..=n {
+        let mut board = Board::new(GRID_SIZE);
+        'game: loop {
+            for action in agent::get_all_actions(&board) {
+                let result = board.apply_action(action);
+                match result {
+                    ActionResult::Win | ActionResult::Lose => {
+                        end_game(&mut record, &result);
+                        break 'game;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        println!(
+            "Simulation {:.2}% complete\n",
+            100.0 * (i as f64 / n as f64)
+        );
     }
 }
