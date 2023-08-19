@@ -147,25 +147,53 @@ fn get_high_probability_guess(
     // generate and test possible bombs positions around boundary
     let start = Instant::now();
     let covered_boundary = sensible_ordering(covered_boundary);
+
+    // let mut print_out =
+    //     vec![vec!["-- ".to_string(); board.width()]; board.height()];
+    // for (i, &TilePos { col, row }) in covered_boundary.iter().enumerate() {
+    //     print_out[row][col] = format!("{:2} ", i);
+    // }
+    // for row in print_out {
+    //     for elt in row {
+    //         print!("{}", elt);
+    //     }
+    //     println!("");
+    // }
+
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
     let total_num_bombs_left = board.num_bombs_left() as u32;
     let num_non_boundary_covered =
         (all_covered.len() - covered_boundary.len()) as u32;
-    let legal_bomb_cases =
-        legal_bomb_candidates(&boundary_constraints, covered_boundary.len())
+    let mut candidates =
+        legal_bomb_candidates(&boundary_constraints, covered_boundary.len());
+    println!(
+        "Generating candidate arrangements of bombs took: {:2.3}s ({} scenario(s) from {} tiles)",
+        start.elapsed().as_secs_f32(),
+        candidates.len(),
+        covered_boundary.len()
+    );
+    let start = Instant::now();
+    // is it possible to have too few bombs as non-boundary bombs is small
+    if num_non_boundary_covered < total_num_bombs_left {
+        candidates = candidates
             .into_iter()
             .filter(|bombs| {
-                // check global constraint of total number of bombs
-                let num_bombs = bombs.count_ones();
-                let max_bombs = total_num_bombs_left;
-                let min_bombs = total_num_bombs_left
-                    .saturating_sub(num_non_boundary_covered);
-                min_bombs <= num_bombs && num_bombs <= max_bombs
+                let min_bombs = total_num_bombs_left - num_non_boundary_covered;
+                min_bombs <= bombs.count_ones()
             })
             .collect_vec();
+    }
+    // it is possible to have too many bombs, as boundary is large
+    if covered_boundary.len() as u32 > total_num_bombs_left {
+        candidates = candidates
+            .into_iter()
+            .filter(|bombs| bombs.count_ones() <= total_num_bombs_left)
+            .collect_vec();
+    }
+    let legal_bomb_cases = candidates;
     println!(
-        "Generating legal arrangements of bombs took: {:.5}s ({} scenario(s) from {} tiles)",
+        "Filtering to legal arrangements of bombs took:   {:2.3}s ({} scenario(s) from {} tiles)",
         start.elapsed().as_secs_f32(),
         legal_bomb_cases.len(),
         covered_boundary.len()
@@ -269,30 +297,37 @@ fn get_high_probability_guess(
         non_boundary_tile
     };
     println!(
-        "Analysing arrangements of bombs took:        {:.5}s\n",
+        "Analysing arrangements of bombs took:        {:2.3}s\n",
         start.elapsed().as_secs_f32(),
     );
     Action::uncover(tile)
 }
 
-fn sensible_ordering(mut covered_boundary: Vec<TilePos>) -> Vec<TilePos> {
-    if covered_boundary.is_empty() {
+fn sensible_ordering(covered_boundary: Vec<TilePos>) -> Vec<TilePos> {
+    if covered_boundary.len() <= 1 {
         return covered_boundary;
     }
-    let mut latest = covered_boundary.pop().unwrap();
-    let mut output = vec![latest];
-    while !covered_boundary.is_empty() {
-        let (i, tile) = covered_boundary
-            .iter()
-            .cloned()
-            .enumerate()
-            .min_by_key(|(_, tile)| tile.squared_distance(latest))
-            .unwrap();
-        covered_boundary.remove(i);
-        output.push(tile);
-        latest = tile;
-    }
-    output
+    let (_, centroid1, centroid2) = covered_boundary
+        .iter()
+        .map(|&tile| {
+            covered_boundary
+                .iter()
+                .map(|&other_tile| {
+                    (tile.squared_distance(other_tile), tile, other_tile)
+                })
+                .max()
+                .unwrap()
+        })
+        .max()
+        .unwrap();
+    let (boundary1, boundary2): (_, Vec<_>) =
+        covered_boundary.into_iter().partition(|tile| {
+            tile.squared_distance(centroid1) > tile.squared_distance(centroid2)
+        });
+    let mut boundary1 = sensible_ordering(boundary1);
+    let mut boundary2 = sensible_ordering(boundary2);
+    boundary1.append(&mut boundary2);
+    boundary1
 }
 
 pub fn make_guess(board: &Board) -> Action {
