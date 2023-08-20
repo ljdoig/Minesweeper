@@ -53,7 +53,11 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_esc)
         .add_systems(Update, check_restart)
-        .add_systems(Update, check_action.run_if(in_state(GameState::Game)))
+        .add_systems(
+            Update,
+            check_player_action.run_if(in_state(GameState::Game)),
+        )
+        .add_systems(Update, check_bot_action.run_if(in_state(GameState::Game)))
         .add_systems(Update, sync_board_with_tile_sprites)
         .run();
 }
@@ -241,9 +245,7 @@ fn check_restart(
     mut record_query: Query<&mut Record>,
 ) {
     let replay = keys.just_pressed(KeyCode::R);
-    if keys.just_pressed(KeyCode::Return) || replay
-    // || matches!(app_state.get(), GameState::GameOver)
-    {
+    if keys.just_pressed(KeyCode::Return) || replay {
         let mut record = record_query.get_single_mut().unwrap();
         if matches!(app_state.get(), GameState::Game) {
             end_game(&mut record, &ActionResult::Continue)
@@ -257,20 +259,21 @@ fn check_restart(
     }
 }
 
-fn check_action(
+fn check_player_action(
     buttons: Res<Input<MouseButton>>,
-    keys: Res<Input<KeyCode>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut board_query: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
-    mut next_agent_state: ResMut<NextState<AgentState>>,
     agent_state: ResMut<State<AgentState>>,
     mut record_query: Query<&mut Record>,
 ) {
+    if matches!(agent_state.get(), AgentState::Thinking) {
+        return;
+    }
     let mut board = board_query.get_single_mut().unwrap();
     let mut record = record_query.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
-        let action_type = if buttons.just_pressed(MouseButton::Left) {
+        let action_type = if buttons.just_released(MouseButton::Left) {
             Some(ActionType::Uncover)
         } else if buttons.just_pressed(MouseButton::Right) {
             Some(ActionType::Flag)
@@ -299,18 +302,20 @@ fn check_action(
                 }
             }
         }
-        return;
     }
+}
 
-    if keys.just_pressed(KeyCode::S) && !board.first_uncovered() {
-        simulate_n_games(100);
-        return;
-    }
-
-    // use bot
-    if keys.just_pressed(KeyCode::Space)
-    // || true
-    {
+fn check_bot_action(
+    keys: Res<Input<KeyCode>>,
+    mut board_query: Query<&mut Board>,
+    mut next_app_state: ResMut<NextState<GameState>>,
+    mut next_agent_state: ResMut<NextState<AgentState>>,
+    agent_state: ResMut<State<AgentState>>,
+    mut record_query: Query<&mut Record>,
+) {
+    let mut board = board_query.get_single_mut().unwrap();
+    let mut record = record_query.get_single_mut().unwrap();
+    if keys.just_pressed(KeyCode::Space) {
         next_agent_state.set(AgentState::Thinking)
     }
     if matches!(agent_state.get(), AgentState::Thinking) {
