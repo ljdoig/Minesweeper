@@ -321,6 +321,15 @@ fn sensible_ordering(covered_boundary: Vec<TilePos>) -> Vec<TilePos> {
         });
     let mut boundary1 = sensible_ordering(boundary1);
     let mut boundary2 = sensible_ordering(boundary2);
+
+    // reorder when merging if distance is smaller
+    let tail1 = boundary1.last().unwrap();
+    let tail_to_head = tail1.squared_distance(*boundary2.first().unwrap());
+    let tail_to_tail = tail1.squared_distance(*boundary2.last().unwrap());
+    if tail_to_head > tail_to_tail {
+        boundary2.reverse();
+    }
+
     boundary1.append(&mut boundary2);
     boundary1
 }
