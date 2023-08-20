@@ -105,9 +105,10 @@ fn legal_bomb_candidates(
 ) -> Vec<u128> {
     let mut nbits_left = boundary_size;
     let mut bins = vec![];
-    while nbits_left > 0 {
-        let chunk_size = nbits_left.min(16);
-        nbits_left -= chunk_size;
+    let nbins = if boundary_size <= 32 { 2 } else { 8 };
+    for bin in 0..nbins {
+        let chunk_size = (nbits_left as f64 / (nbins - bin) as f64).round();
+        nbits_left -= chunk_size as usize;
         let max_chunk = 2_u128.pow(chunk_size as u32) - 1;
         let mut bin = vec![];
         let mask = max_chunk << nbits_left;
