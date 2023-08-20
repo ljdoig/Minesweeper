@@ -120,12 +120,13 @@ impl Board {
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
-        // longest
-        // self.seed = 4952856381497283839; // 113
+        // self.seed = 4952856381497283839; // 113s
 
         // self.seed = 12032595555994782339; // 1000s
 
-        // self.seed = 10126855127364932031; // 20s
+        // self.seed = 5741046104864368201; // 450s
+
+        // self.seed = 12221929043923951279; // 78s
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
