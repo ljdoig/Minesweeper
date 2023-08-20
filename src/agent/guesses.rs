@@ -320,16 +320,19 @@ fn sensible_ordering(covered_boundary: Vec<TilePos>) -> Vec<TilePos> {
     if covered_boundary.len() <= 1 {
         return covered_boundary.to_vec();
     }
-    let (&centroid1, &centroid2) = covered_boundary
+    let &centroid = covered_boundary
         .iter()
         .cartesian_product(&covered_boundary)
         .max_by_key(|(tile, &other_tile)| tile.squared_distance(other_tile))
-        .unwrap();
-    let (boundary1, boundary2): (_, Vec<_>) =
-        covered_boundary.into_iter().partition(|tile| {
-            tile.squared_distance(centroid1) > tile.squared_distance(centroid2)
-        });
+        .unwrap()
+        .0;
+    let mut sorted = covered_boundary
+        .into_iter()
+        .sorted_unstable_by_key(|tile| tile.squared_distance(centroid))
+        .collect_vec();
 
+    let boundary2 = sorted.split_off(sorted.len() / 2);
+    let boundary1 = sorted;
     let mut boundary1 = sensible_ordering(boundary1);
     let mut boundary2 = sensible_ordering(boundary2);
 
