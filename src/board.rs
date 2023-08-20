@@ -6,8 +6,8 @@ use crate::TilePos;
 const NUM_BOMBS: usize = 99;
 pub const GRID_SIZE: (usize, usize) = (30, 16);
 
-// const NUM_BOMBS: usize = 40;
-// pub const GRID_SIZE: (usize, usize) = (16, 16);
+// const NUM_BOMBS: usize = 10;
+// pub const GRID_SIZE: (usize, usize) = (9, 9);
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -110,6 +110,10 @@ impl Board {
         self.seed
     }
 
+    pub fn first_uncovered(&self) -> bool {
+        self.first_uncovered
+    }
+
     fn sample_bombs(&mut self, seed: Option<u64>) {
         self.bombs = vec![false; self.width * self.height];
 
@@ -117,7 +121,11 @@ impl Board {
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
         // longest
-        // self.seed = 10126855127364932031;
+        // self.seed = 4952856381497283839; // 113
+
+        // self.seed = 12032595555994782339; // 1000s
+
+        // self.seed = 10126855127364932031; // 20s
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement

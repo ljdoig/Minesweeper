@@ -94,6 +94,11 @@ fn get_boundary_constraints(
         .collect()
 }
 
+fn elapsed_time_string(instant: &Instant) -> String {
+    let str = format!("{:3.3}", instant.elapsed().as_secs_f32());
+    format!("{:>7}", str)
+}
+
 fn legal_bomb_candidates(
     boundary_constraints: &Vec<(u8, u128)>,
     boundary_size: usize,
@@ -147,19 +152,6 @@ fn get_high_probability_guess(
     // generate and test possible bombs positions around boundary
     let start = Instant::now();
     let covered_boundary = sensible_ordering(covered_boundary);
-
-    // let mut print_out =
-    //     vec![vec!["-- ".to_string(); board.width()]; board.height()];
-    // for (i, &TilePos { col, row }) in covered_boundary.iter().enumerate() {
-    //     print_out[row][col] = format!("{:2} ", i);
-    // }
-    // for row in print_out {
-    //     for elt in row {
-    //         print!("{}", elt);
-    //     }
-    //     println!("");
-    // }
-
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
     let total_num_bombs_left = board.num_bombs_left() as u32;
@@ -167,13 +159,6 @@ fn get_high_probability_guess(
         (all_covered.len() - covered_boundary.len()) as u32;
     let mut candidates =
         legal_bomb_candidates(&boundary_constraints, covered_boundary.len());
-    println!(
-        "Generating candidate arrangements of bombs took: {:2.3}s ({} scenario(s) from {} tiles)",
-        start.elapsed().as_secs_f32(),
-        candidates.len(),
-        covered_boundary.len()
-    );
-    let start = Instant::now();
     // is it possible to have too few bombs as non-boundary bombs is small
     if num_non_boundary_covered < total_num_bombs_left {
         candidates = candidates
@@ -193,12 +178,13 @@ fn get_high_probability_guess(
     }
     let legal_bomb_cases = candidates;
     println!(
-        "Filtering to legal arrangements of bombs took:   {:2.3}s ({} scenario(s) from {} tiles)",
-        start.elapsed().as_secs_f32(),
+        "Generating legal arrangements of bombs took: {}s ({} scenario(s) from {} tiles)",
+        elapsed_time_string(&start),
         legal_bomb_cases.len(),
         covered_boundary.len()
     );
     let start = Instant::now();
+
     let min_bombs_omitted = legal_bomb_cases
         .iter()
         .map(|bombs| total_num_bombs_left - bombs.count_ones())
@@ -224,7 +210,6 @@ fn get_high_probability_guess(
             (bombs, weight)
         })
         .collect_vec();
-
     // evaluate legal bomb cases around boundary
     let (boundary_tile, boundary_safety_prob) = covered_boundary
         .iter()
@@ -248,8 +233,21 @@ fn get_high_probability_guess(
         })
         .unwrap();
 
+    if num_non_boundary_covered == 0 {
+        println!(
+            "Best odds:                       {:3.1}% -> {:?}",
+            boundary_safety_prob * 100.0,
+            boundary_tile,
+        );
+        println!(
+            "Analysing arrangements of bombs took:    {}s\n",
+            elapsed_time_string(&start)
+        );
+        return Action::uncover(*boundary_tile);
+    }
+
     // consider if there are better odds for a non-boundary tile
-    let non_boundary_safety_prob = if num_non_boundary_covered > 0 {
+    let non_boundary_safety_prob = {
         let unsafe_weights = bombs_omitted_count.iter().fold(
             0.0,
             |mut running_total, (&num_bombs_omitted, &(count, weight))| {
@@ -261,22 +259,18 @@ fn get_high_probability_guess(
                 running_total
             },
         );
-        let non_boundary_safety_prob = 1.0 - unsafe_weights / total_weights;
-        println!(
-            "Best odds on boundary:           {:3.1}% -> {:?}",
-            boundary_safety_prob * 100.0,
-            boundary_tile,
-        );
-        println!(
-            "Best odds not on boundary:       {:3.1}%",
-            non_boundary_safety_prob * 100.0,
-        );
-        non_boundary_safety_prob
-    } else {
-        0.0
+        1.0 - unsafe_weights / total_weights
     };
-
-    let &tile = if boundary_safety_prob > non_boundary_safety_prob {
+    println!(
+        "Best odds on boundary:           {:3.1}% -> {:?}",
+        boundary_safety_prob * 100.0,
+        boundary_tile,
+    );
+    println!(
+        "Best odds not on boundary:       {:3.1}%",
+        non_boundary_safety_prob * 100.0,
+    );
+    let &best_tile = if boundary_safety_prob > non_boundary_safety_prob {
         println!(
             "Best odds are from boundary:     {:3.1}% -> {:?}",
             boundary_safety_prob * 100.0,
@@ -284,10 +278,17 @@ fn get_high_probability_guess(
         );
         boundary_tile
     } else {
-        // unwrap here because non_boundary_tile must exist to have higher prob
+        // unwrap here because we have already checked non-boundary tiles exist
         let non_boundary_tile = all_covered
             .iter()
-            .find(|tile| !covered_boundary.contains(tile))
+            .filter(|tile| !covered_boundary.contains(tile))
+            .min_by_key(|&&tile| {
+                // choose tile that will keep the boundary smallest
+                covered_neighbours(board, tile)
+                    .into_iter()
+                    .filter(|tile| !covered_boundary.contains(tile))
+                    .count()
+            })
             .unwrap();
         println!(
             "Best odds are from non-boundary: {:3.1}% -> {:?}",
@@ -296,29 +297,22 @@ fn get_high_probability_guess(
         );
         non_boundary_tile
     };
+
     println!(
-        "Analysing arrangements of bombs took:        {:2.3}s\n",
-        start.elapsed().as_secs_f32(),
+        "Analysing arrangements of bombs took:    {}s\n",
+        elapsed_time_string(&start)
     );
-    Action::uncover(tile)
+    Action::uncover(best_tile)
 }
 
 fn sensible_ordering(covered_boundary: Vec<TilePos>) -> Vec<TilePos> {
     if covered_boundary.len() <= 1 {
-        return covered_boundary;
+        return covered_boundary.to_vec();
     }
-    let (_, centroid1, centroid2) = covered_boundary
+    let (&centroid1, &centroid2) = covered_boundary
         .iter()
-        .map(|&tile| {
-            covered_boundary
-                .iter()
-                .map(|&other_tile| {
-                    (tile.squared_distance(other_tile), tile, other_tile)
-                })
-                .max()
-                .unwrap()
-        })
-        .max()
+        .cartesian_product(&covered_boundary)
+        .max_by_key(|(tile, &other_tile)| tile.squared_distance(other_tile))
         .unwrap();
     let (boundary1, boundary2): (_, Vec<_>) =
         covered_boundary.into_iter().partition(|tile| {
@@ -358,7 +352,7 @@ pub fn make_guess(board: &Board) -> Action {
         );
     }
 
-    // to avoid combinatorics, we just take the tile with the best greedy odds
+    // this will almost certainly never happen, but it's an option
     let (min_bombs, max_bombs) = deductions::get_subset_bounds(board);
     let pos = covered_boundary
         .iter()
