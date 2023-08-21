@@ -62,9 +62,9 @@ pub fn get_all_actions(board: &Board) -> Vec<Action> {
 pub fn get_trivial_actions(board: &Board) -> Vec<Action> {
     let mut output = vec![];
     if board.tile_states().iter().all(|&x| x == TileState::Covered) {
-        // first guess, just go for the centre
+        // first guess
         let pos = TilePos {
-            col: board.width() / 2,
+            col: 2,
             row: board.height() / 2,
         };
         return vec![Action::uncover(pos)];
