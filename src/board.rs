@@ -80,6 +80,7 @@ impl Board {
     }
 
     pub fn reset(&mut self, seed: Option<u64>) {
+        println!("Beginning game with {} bombs", NUM_BOMBS);
         self.tile_states = vec![TileState::Covered; self.width * self.height];
         self.sample_bombs(seed);
         self.num_bombs_left = NUM_BOMBS as isize;
@@ -119,14 +120,6 @@ impl Board {
 
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
-
-        // self.seed = 4952856381497283839; // 113s
-
-        // self.seed = 12032595555994782339; // 1000s
-
-        // self.seed = 5741046104864368201; // 450s
-
-        // self.seed = 12221929043923951279; // 78s
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
@@ -184,7 +177,7 @@ impl Board {
         while self.num_bombs_around(pos) > 0 || self.bomb(pos) {
             self.sample_bombs(None);
         }
-        println!("Board seed: {}", self.seed);
+        println!("Board seed: {}\n", self.seed);
         self.uncover_safe(pos);
     }
 
@@ -261,7 +254,7 @@ impl Board {
                 self.num_bombs_left += 1;
             }
             // uncover
-            (_, ActionType::Uncover) => {
+            (TileState::Covered, ActionType::Uncover) => {
                 if !self.first_uncovered {
                     self.uncover_first(pos);
                     self.first_uncovered = true;
@@ -276,6 +269,7 @@ impl Board {
                     }
                 }
             }
+            (TileState::Flagged, ActionType::Uncover) => {}
             _ => {}
         }
         ActionResult::Continue

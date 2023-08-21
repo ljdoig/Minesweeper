@@ -53,12 +53,15 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, close_on_esc)
         .add_systems(Update, check_restart)
+        .add_systems(Update, check_bot_action.run_if(in_state(GameState::Game)))
         .add_systems(
             Update,
             check_player_action.run_if(in_state(GameState::Game)),
         )
-        .add_systems(Update, check_bot_action.run_if(in_state(GameState::Game)))
-        .add_systems(Update, sync_board_with_tile_sprites)
+        .add_systems(
+            Update,
+            sync_board_with_tile_sprites.after(check_player_action),
+        )
         .run();
 }
 
@@ -123,7 +126,6 @@ fn setup(
     }
     spawn_padding(&mut commands, asset_server);
     let board = Board::new(GRID_SIZE);
-    println!("Beginning game with {} bombs", board.num_bombs_left());
     commands.spawn(board);
     commands.spawn(Record::default());
 }
@@ -255,7 +257,6 @@ fn check_restart(
         let mut board = board_query.get_single_mut().unwrap();
         let seed = replay.then_some(board.seed());
         board.reset(seed);
-        println!("Beginning game with {} bombs", board.num_bombs_left());
     }
 }
 
@@ -406,9 +407,7 @@ fn complete_action(
             end_game(record, &result);
             next_app_state.set(GameState::GameOver);
         }
-        ActionResult::Continue => {
-            // println!("Num bombs left: {}", board.num_bombs_left());
-        }
+        ActionResult::Continue => {}
     }
     result
 }
@@ -416,10 +415,31 @@ fn complete_action(
 fn sync_board_with_tile_sprites(
     board_query: Query<&Board>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
+    buttons: Res<Input<MouseButton>>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     if let Ok(board) = board_query.get_single() {
-        for (mut sprite, pos) in &mut tile_sprites_query {
-            let tile_state = board.tile_state(*pos);
+        let mut pressed = None;
+        if buttons.pressed(MouseButton::Left) {
+            if let Some(position) = q_windows.single().cursor_position() {
+                if position.x > EDGE_PADDING && position.y > TOP_PADDING {
+                    let col = (position.x - EDGE_PADDING) / TILE_SIZE;
+                    let row = (position.y - TOP_PADDING) / TILE_SIZE;
+                    pressed = TilePos::new(col as usize, row as usize, &board);
+                }
+            }
+        };
+        for (mut sprite, &pos) in &mut tile_sprites_query {
+            let tile_state = board.tile_state(pos);
+            if let Some(pressed_pos) = pressed {
+                if matches!(tile_state, TileState::Covered)
+                    && pos == pressed_pos
+                {
+                    let index = sprite_sheet_index(TileState::UncoveredSafe(0));
+                    sprite.index = index;
+                    continue;
+                }
+            }
             let index = sprite_sheet_index(tile_state);
             sprite.index = index;
         }
