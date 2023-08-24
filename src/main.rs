@@ -1,10 +1,16 @@
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
 use bevy_framepace;
-// ToDo: Replace bevy_game with your new crate name.
-use minesweeper::{GamePlugin, WINDOW_HEIGHT, WINDOW_WIDTH};
+use minesweeper::{simulate_n_games, GamePlugin, WINDOW_HEIGHT, WINDOW_WIDTH};
+use std::env;
 
 fn main() {
+    let args: Vec<_> = env::args().collect();
+    if args.len() > 1 {
+        let n: usize = args[1].parse().unwrap();
+        simulate_n_games(n);
+        return;
+    }
     App::new()
         .insert_resource(Msaa::Off)
         .insert_resource(ClearColor(Color::rgb(0.75, 0.75, 0.75)))
