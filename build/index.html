@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Minesweeper</title>
+
+    <link rel="preload" href="/Minesweeper/minesweeper_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+    <link rel="modulepreload" href="/Minesweeper/minesweeper.js">
+</head>
+
+<body>
+    <div class="game-container">
+        <canvas id="bevy">
+            Javascript and support for canvas is required
+        </canvas>
+    </div>
+
+
+    <script
+        type="module">import init from '/Minesweeper/minesweeper.js'; init('/Minesweeper/minesweeper_bg.wasm');</script>
+</body>
+
+</html>

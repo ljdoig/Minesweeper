@@ -1,0 +1,6 @@
+
+const noContext = document.getElementById("bevy");
+
+noContext.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+});
