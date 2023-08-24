@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Minesweeper</title> <!-- ToDo -->
+
+    <link rel="preload" href="/Minesweeper/minesweeper_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+    <link rel="modulepreload" href="/Minesweeper/minesweeper.js">
+</head>
+
+<body>
+    <script>
+        (function () {
+            // An array of all contexts to resume on the page
+            const audioContextList = [];
+
+            // An array of various user interaction events we should listen for
+            const userInputEventNames = [
+                "click",
+                "contextmenu",
+                "auxclick",
+                "dblclick",
+                "mousedown",
+                "mouseup",
+                "pointerup",
+                "touchend",
+                "keydown",
+                "keyup",
+            ];
+
+
+            // We bind the resume function for each user interaction
+            // event on the page
+            userInputEventNames.forEach((eventName) => {
+                document.addEventListener(eventName, resumeAllContexts);
+            });
+        })();
+    </script>
+    <div class="game-container">
+        <canvas id="bevy">
+            Javascript and support for canvas is required
+        </canvas>
+    </div>
+
+
+    <script
+        type="module">import init from '/Minesweeper/minesweeper.js'; init('/Minesweeper/minesweeper_bg.wasm');</script>
+</body>
+
+</html>
