@@ -5,9 +5,25 @@
     <meta charset="utf-8">
     <title>Minesweeper</title>
 
+    <style>
+        #text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            font-size: 35px;
+            color: white;
+            transform: translate(-50%, -50%);
+            -ms-transform: translate(-50%, -50%);
+            z-index: -1;
+            font-family: monospace;
+        }
 
+    </style>
 
-    <link rel="icon" href="icon.ico">
+    <div id="overlay">
+        <div id="text">Loading...</div>
+    </div>
+
     <style type="text/css">
         body,
         html {
