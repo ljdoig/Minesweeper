@@ -2,7 +2,7 @@ use super::*;
 use crate::TilePos;
 use itertools::Itertools;
 use itertools::MinMaxResult;
-use std::time::Instant;
+// use std::time::Instant;
 
 fn case_weight(
     num_bombs_omitted: u32,
@@ -94,10 +94,10 @@ fn get_boundary_constraints(
         .collect()
 }
 
-fn elapsed_time_string(instant: &Instant) -> String {
-    let str = format!("{:3.3}", instant.elapsed().as_secs_f32());
-    format!("{:>7}", str)
-}
+// fn elapsed_time_string(instant: &Instant) -> String {
+//     let str = format!("{:3.3}", instant.elapsed().as_secs_f32());
+//     format!("{:>7}", str)
+// }
 
 fn legal_bomb_candidates(
     boundary_constraints: &Vec<(u8, u128)>,
@@ -151,7 +151,7 @@ fn get_high_probability_guess(
     board: &Board,
 ) -> Action {
     // generate and test possible bombs positions around boundary
-    let start = Instant::now();
+    // let start = Instant::now();
     let covered_boundary = sensible_ordering(covered_boundary);
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
@@ -180,11 +180,11 @@ fn get_high_probability_guess(
     let legal_bomb_cases = candidates;
     println!(
         "Generating legal arrangements of bombs took: {}s ({} scenario(s) from {} tiles)",
-        elapsed_time_string(&start),
+0.0, // elapsed_time_string(&start),,
         legal_bomb_cases.len(),
         covered_boundary.len()
     );
-    let start = Instant::now();
+    // let start = Instant::now();
 
     let (min_bombs_omitted, max_bombs_omitted) = {
         let min_max = legal_bomb_cases
@@ -255,7 +255,7 @@ fn get_high_probability_guess(
         );
         println!(
             "Analysing arrangements of bombs took:        {}s\n",
-            elapsed_time_string(&start)
+            0.0, // elapsed_time_string(&start),
         );
         return Action::uncover(*boundary_tile);
     }
@@ -311,7 +311,7 @@ fn get_high_probability_guess(
 
     println!(
         "Analysing arrangements of bombs took:        {}s\n",
-        elapsed_time_string(&start)
+        0.0, // elapsed_time_string(&start),
     );
     Action::uncover(best_tile)
 }

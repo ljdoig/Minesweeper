@@ -8,7 +8,7 @@ mod board;
 
 use board::*;
 
-pub const WINDOW_HEIGHT: f32 = 500.0;
+pub const WINDOW_HEIGHT: f32 = 600.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SIZE: f32 = 12.0;
 const TOP_PADDING_SIZE: f32 = 12.0;
@@ -157,7 +157,10 @@ fn spawn_padding_piece(
     let (rotation, scale) = if horizontal {
         (
             Quat::from_rotation_z(-PI / 2.0),
-            Vec2::new(SCALE, BOARD_WIDTH / TILE_SPRITE_SIZE),
+            Vec2::new(
+                SCALE,
+                (BOARD_WIDTH + EDGE_PADDING * 2.0) / TILE_SPRITE_SIZE,
+            ),
         )
     } else {
         (
