@@ -1,5 +1,6 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
+use bevy_framepace::{FramepaceSettings, Limiter};
 use std::f32::consts::PI;
 use std::time::Instant;
 
@@ -30,19 +31,16 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_state::<GameState>()
             .add_state::<AgentState>()
-            .add_systems(Startup, setup)
+            .add_systems(Startup, setup_game)
             .add_systems(Update, close_on_esc)
             .add_systems(Update, check_restart)
             .add_systems(
                 Update,
-                check_bot_action.run_if(in_state(GameState::Game)),
+                (check_bot_action, check_player_action)
+                    .run_if(in_state(GameState::Game)),
             )
             .add_systems(
-                Update,
-                check_player_action.run_if(in_state(GameState::Game)),
-            )
-            .add_systems(
-                Update,
+                Last,
                 sync_board_with_tile_sprites.after(check_player_action),
             );
     }
@@ -69,16 +67,16 @@ pub struct Record {
     dnf: usize,
 }
 
-fn setup(
+fn setup_game(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut settings: ResMut<bevy_framepace::FramepaceSettings>,
+    mut settings: ResMut<FramepaceSettings>,
 ) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(40.0);
+    settings.limiter = Limiter::from_framerate(60.0);
     commands.spawn(Camera2dBundle::default());
-
-    let texture_handle = asset_server.load("minesweeper_tiles.png");
+    let texture_handle =
+        asset_server.load("spritesheets/minesweeper_tiles.png");
     let texture_atlas = TextureAtlas::from_grid(
         texture_handle,
         Vec2::splat(TILE_SPRITE_SIZE),
@@ -88,7 +86,6 @@ fn setup(
         None,
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-
     for col in 0..GRID_SIZE.0 {
         for row in 0..GRID_SIZE.1 {
             let tile_sprite = TilePos { col, row };
@@ -107,6 +104,7 @@ fn setup(
             ));
         }
     }
+
     spawn_padding(&mut commands, asset_server);
     let board = Board::new(GRID_SIZE);
     commands.spawn(board);
@@ -114,6 +112,11 @@ fn setup(
 }
 
 fn spawn_padding(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    // verticals
+    let horizontal_offset =
+        Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
+    spawn_padding_piece(commands, &asset_server, horizontal_offset, false);
+    spawn_padding_piece(commands, &asset_server, -horizontal_offset, false);
     // horizontals
     let board_centre =
         Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - TOP_PADDING - BOARD_HEIGHT / 2.0);
@@ -130,21 +133,6 @@ fn spawn_padding(commands: &mut Commands, asset_server: Res<AssetServer>) {
         &asset_server,
         board_centre - vertical_offset,
         true,
-    );
-    // verticals
-    let horizontal_offset =
-        Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
-    spawn_padding_piece(
-        commands,
-        &asset_server,
-        board_centre + horizontal_offset,
-        false,
-    );
-    spawn_padding_piece(
-        commands,
-        &asset_server,
-        board_centre - horizontal_offset,
-        false,
     );
 }
 
@@ -165,7 +153,7 @@ fn spawn_padding_piece(
     } else {
         (
             Quat::IDENTITY,
-            Vec2::new(SCALE, BOARD_HEIGHT / TILE_SPRITE_SIZE),
+            Vec2::new(SCALE, WINDOW_HEIGHT / TILE_SPRITE_SIZE),
         )
     };
     commands.spawn(SpriteBundle {
