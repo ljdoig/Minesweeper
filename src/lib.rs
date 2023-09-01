@@ -2,7 +2,15 @@ use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 use bevy_framepace::{FramepaceSettings, Limiter};
 use std::f32::consts::PI;
+use std::fmt;
 use std::time::Instant;
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn log(s: &str);
+}
 
 mod agent;
 mod board;
@@ -66,6 +74,32 @@ pub struct Record {
     win: usize,
     loss: usize,
     dnf: usize,
+    total_bombs_cleared: usize,
+    total_bombs: usize,
+}
+
+impl Record {
+    fn win_rate(&self) -> f64 {
+        self.win as f64 / (self.win + self.loss + self.dnf) as f64
+    }
+
+    fn clearance_rate(&self) -> f64 {
+        self.total_bombs_cleared as f64 / self.total_bombs as f64
+    }
+}
+
+impl fmt::Display for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = format!(
+            "{}-{}-{} ({:.2}% win rate, {:.2}% bombs cleared)",
+            self.win,
+            self.loss,
+            self.dnf,
+            100.0 * self.win_rate(),
+            100.0 * self.clearance_rate(),
+        );
+        f.write_str(string.as_ref())
+    }
 }
 
 #[derive(Component)]
@@ -283,8 +317,8 @@ fn digit_sheet_index(c: char) -> usize {
         return x as usize;
     }
     match c {
-        '-' => 11,
-        ' ' => 12,
+        '-' => 10,
+        ' ' => 11,
         _ => panic!(),
     }
 }
@@ -297,15 +331,19 @@ fn check_restart(
     app_state: ResMut<State<GameState>>,
     mut record_query: Query<&mut Record>,
 ) {
+    let mut board = board_query.get_single_mut().unwrap();
+    // avoid repeated restart
+    if !board.first_uncovered() {
+        return;
+    }
     let replay = keys.just_pressed(KeyCode::R);
     if keys.just_pressed(KeyCode::Return) || replay {
         let mut record = record_query.get_single_mut().unwrap();
         if matches!(app_state.get(), GameState::Game) {
-            end_game(&mut record, &ActionResult::Continue)
+            end_game(&mut record, &ActionResult::Continue, &board);
         }
         next_app_state.set(GameState::Game);
         next_agent_state.set(AgentState::Resting);
-        let mut board = board_query.get_single_mut().unwrap();
         let seed = replay.then_some(board.seed());
         board.reset(seed);
     }
@@ -421,7 +459,7 @@ fn check_bot_action(
     }
 }
 
-fn end_game(record: &mut Record, result: &ActionResult) {
+fn end_game(record: &mut Record, result: &ActionResult, board: &Board) {
     match result {
         ActionResult::Win => {
             record.win += 1;
@@ -436,14 +474,13 @@ fn end_game(record: &mut Record, result: &ActionResult) {
             println!("You didn't finish the game...");
         }
     }
-    let win_rate =
-        record.win as f64 / (record.win + record.loss + record.dnf) as f64;
-    println!(
-        "Record: ({}/{}) ({:.2}%)\n",
-        record.win,
-        record.loss,
-        100.0 * win_rate
-    );
+    record.total_bombs_cleared +=
+        board.num_bombs_total() - board.num_bombs_left() as usize;
+    record.total_bombs += board.num_bombs_total();
+    println!("Record: {}\n", record);
+    if cfg!(target_family = "wasm") {
+        log(&format!("Record: {}", record));
+    }
 }
 
 fn complete_action(
@@ -455,7 +492,7 @@ fn complete_action(
     let result = board.apply_action(action);
     match result {
         ActionResult::Win | ActionResult::Lose => {
-            end_game(record, &result);
+            end_game(record, &result, board);
             next_app_state.set(GameState::GameOver);
         }
         ActionResult::Continue => {}
@@ -527,7 +564,7 @@ pub fn simulate_n_games(n: usize) {
                 let result = board.apply_action(action);
                 match result {
                     ActionResult::Win | ActionResult::Lose => {
-                        end_game(&mut record, &result);
+                        end_game(&mut record, &result, &board);
                         break 'game;
                     }
                     _ => {}

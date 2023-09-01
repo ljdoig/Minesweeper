@@ -60,6 +60,7 @@ pub struct Board {
     tile_states: Vec<TileState>,
     bombs: Vec<bool>,
     num_bombs_left: isize,
+    num_bombs_total: usize,
     first_uncovered: bool,
     seed: u64,
 }
@@ -72,6 +73,7 @@ impl Board {
             tile_states: vec![],
             bombs: vec![],
             num_bombs_left: 0,
+            num_bombs_total: NUM_BOMBS,
             first_uncovered: false,
             seed: 0,
         };
@@ -83,7 +85,7 @@ impl Board {
         println!("Beginning game with {} bombs", NUM_BOMBS);
         self.tile_states = vec![TileState::Covered; self.width * self.height];
         self.sample_bombs(seed);
-        self.num_bombs_left = NUM_BOMBS as isize;
+        self.num_bombs_left = self.num_bombs_total as isize;
         self.first_uncovered = false;
     }
 
@@ -107,6 +109,10 @@ impl Board {
         self.num_bombs_left
     }
 
+    pub fn num_bombs_total(&self) -> usize {
+        self.num_bombs_total
+    }
+
     pub fn seed(&self) -> u64 {
         self.seed
     }
@@ -120,6 +126,8 @@ impl Board {
 
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
+
+        // self.seed = 5913895412333589340;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
@@ -144,8 +152,9 @@ impl Board {
         let index = self.index(pos);
         // flagging or unflagging changes num_bombs_left
         self.num_bombs_left += match (self.tile_states[index], state) {
+            (x, y) if x == y => return,
             (TileState::Covered, TileState::Flagged) => -1,
-            (TileState::Flagged, TileState::Covered) => 1,
+            (TileState::Flagged, _) => 1,
             _ => 0,
         };
         self.tile_states[index] = state;

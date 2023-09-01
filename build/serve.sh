@@ -8,6 +8,4 @@ wasm-bindgen \
     --target web target/wasm32-unknown-unknown/release/minesweeper.wasm
 cat build/append.txt >> Minesweeper/minesweeper.js
 
-
-/Applications/Firefox.app/Contents/MacOS/firefox -new-tab http://\[::\]:8004/minesweeper
-python3 -m http.server 8004 
+python3 -m http.server 8080

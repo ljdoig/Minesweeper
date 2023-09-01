@@ -2139,6 +2139,7 @@ dependencies = [
  "bevy_framepace",
  "itertools",
  "rand",
+ "wasm-bindgen",
 ]
 
 [[package]]
