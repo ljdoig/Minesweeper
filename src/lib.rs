@@ -1,16 +1,26 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 use bevy_framepace::{FramepaceSettings, Limiter};
+use instant::Instant;
 use std::f32::consts::PI;
 use std::fmt;
-use std::time::Instant;
-use wasm_bindgen::prelude::*;
 
+// redirect println! to console.log in wasm
+#[cfg(target_family = "wasm")]
+use wasm_bindgen::prelude::wasm_bindgen;
+
+#[cfg(target_family = "wasm")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
-    pub fn log(s: &str);
+    fn log(s: &str);
 }
+
+#[cfg(target_family = "wasm")]
+custom_print::define_macros!({ cprintln }, concat, unsafe fn (crate::log)(&str));
+
+#[cfg(target_family = "wasm")]
+macro_rules! println { ($($args:tt)*) => { cprintln!($($args)*); } }
 
 mod agent;
 mod board;
@@ -478,9 +488,6 @@ fn end_game(record: &mut Record, result: &ActionResult, board: &Board) {
         board.num_bombs_total() - board.num_bombs_left() as usize;
     record.total_bombs += board.num_bombs_total();
     println!("Record: {}\n", record);
-    if cfg!(target_family = "wasm") {
-        log(&format!("Record: {}", record));
-    }
 }
 
 fn complete_action(

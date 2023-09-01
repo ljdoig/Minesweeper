@@ -1367,6 +1367,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "custom-print"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f069652649993736519feb4836624034e3c63554ca33b28dbf192cf5ffb9cce4"
+
+[[package]]
 name = "d3d12"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2137,6 +2143,8 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_framepace",
+ "custom-print",
+ "instant",
  "itertools",
  "rand",
  "wasm-bindgen",
