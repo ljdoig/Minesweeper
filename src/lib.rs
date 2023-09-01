@@ -13,6 +13,7 @@ pub const WINDOW_HEIGHT: f32 = 600.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SIZE: f32 = 12.0;
 const TOP_PADDING_SIZE: f32 = 60.0;
+const DIGIT_SPRITE_SIZE: (f32, f32) = (13.0, 23.0);
 
 const UNSCALED_HEIGHT: f32 = GRID_SIZE.1 as f32 * TILE_SPRITE_SIZE
     + TOP_PADDING_SIZE
@@ -68,7 +69,7 @@ pub struct Record {
 }
 
 #[derive(Component)]
-pub struct DisplayDigits;
+pub struct BombCounterDigit;
 
 fn setup(
     mut commands: Commands,
@@ -112,7 +113,7 @@ fn spawn_board(
                 for row in 0..GRID_SIZE.1 {
                     let tile_sprite = TilePos { col, row };
                     let sprite_sheet_index =
-                        sprite_sheet_index(TileState::Covered);
+                        tile_sheet_index(TileState::Covered);
                     parent.spawn((
                         SpriteSheetBundle {
                             texture_atlas: texture_atlas_handle.clone(),
@@ -139,10 +140,10 @@ fn spawn_bomb_display(
     let texture_handle = asset_server.load("spritesheets/numbers.png");
     let texture_atlas = TextureAtlas::from_grid(
         texture_handle,
-        Vec2::new(13.0, 23.0),
+        Vec2::new(DIGIT_SPRITE_SIZE.0, DIGIT_SPRITE_SIZE.1),
         12,
         1,
-        Some(Vec2::new(1.0, 13.0)),
+        Some(Vec2::new(1.0, DIGIT_SPRITE_SIZE.1)),
         None,
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
@@ -152,26 +153,24 @@ fn spawn_bomb_display(
         ..default()
     };
     commands
-        .spawn(DisplayDigits)
-        .insert(SpatialBundle::from_transform(transform))
+        .spawn(SpatialBundle::from_transform(transform))
         .with_children(|parent| {
-            parent.spawn(SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle.clone(),
-                sprite: TextureAtlasSprite::new(0),
-                transform: Transform::from_translation(Vec3::X * -23.0 / SCALE),
-                ..default()
-            });
-            parent.spawn(SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle.clone(),
-                sprite: TextureAtlasSprite::new(0),
-                ..default()
-            });
-            parent.spawn(SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle,
-                sprite: TextureAtlasSprite::new(0),
-                transform: Transform::from_translation(Vec3::X * 23.0 / SCALE),
-                ..default()
-            });
+            let digit_spacing = Vec3::X * DIGIT_SPRITE_SIZE.1 / SCALE;
+            let spawn_new_digit = |i| {
+                let new_digit = (
+                    SpriteSheetBundle {
+                        texture_atlas: texture_atlas_handle.clone(),
+                        sprite: TextureAtlasSprite::new(0),
+                        transform: Transform::from_translation(
+                            digit_spacing * i as f32,
+                        ),
+                        ..default()
+                    },
+                    BombCounterDigit,
+                );
+                parent.spawn(new_digit);
+            };
+            (-1..=1).for_each(spawn_new_digit);
         });
 }
 
@@ -179,12 +178,12 @@ fn spawn_padding(commands: &mut Commands, asset_server: &Res<AssetServer>) {
     // verticals
     let horizontal_offset =
         Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
-    spawn_padding_piece(commands, &asset_server, horizontal_offset, false);
-    spawn_padding_piece(commands, &asset_server, -horizontal_offset, false);
+    spawn_padding_piece(commands, asset_server, horizontal_offset, false);
+    spawn_padding_piece(commands, asset_server, -horizontal_offset, false);
     // very top
     spawn_padding_piece(
         commands,
-        &asset_server,
+        asset_server,
         Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - EDGE_PADDING / 2.0),
         true,
     );
@@ -195,13 +194,13 @@ fn spawn_padding(commands: &mut Commands, asset_server: &Res<AssetServer>) {
         Vec2::new(0.0, BOARD_HEIGHT / 2.0 + EDGE_PADDING / 2.0);
     spawn_padding_piece(
         commands,
-        &asset_server,
+        asset_server,
         board_centre + vertical_offset,
         true,
     );
     spawn_padding_piece(
         commands,
-        &asset_server,
+        asset_server,
         board_centre - vertical_offset,
         true,
     );
@@ -268,7 +267,7 @@ impl TilePos {
     }
 }
 
-fn sprite_sheet_index(state: TileState) -> usize {
+fn tile_sheet_index(state: TileState) -> usize {
     match state {
         TileState::Covered => 0,
         TileState::Flagged => 1,
@@ -276,6 +275,17 @@ fn sprite_sheet_index(state: TileState) -> usize {
         TileState::UncoveredBomb => 2,
         TileState::UncoveredSafe(n) => 3 + n as usize,
         TileState::Misflagged => 13,
+    }
+}
+
+fn digit_sheet_index(c: char) -> usize {
+    if let Some(x) = c.to_digit(10) {
+        return x as usize;
+    }
+    match c {
+        '-' => 11,
+        ' ' => 12,
+        _ => panic!(),
     }
 }
 
@@ -456,21 +466,27 @@ fn complete_action(
 fn sync_board_with_tile_sprites(
     board_query: Query<&Board>,
     mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
+    mut bomb_counter_digits: Query<
+        (&mut TextureAtlasSprite, &BombCounterDigit),
+        Without<TilePos>,
+    >,
     app_state: ResMut<State<GameState>>,
     buttons: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     if let Ok(board) = board_query.get_single() {
+        // check if mouse is down over a tile
         let mut pressed = None;
         if buttons.pressed(MouseButton::Left) {
             if let Some(position) = q_windows.single().cursor_position() {
                 if position.x > EDGE_PADDING && position.y > TOP_PADDING {
                     let col = (position.x - EDGE_PADDING) / TILE_SIZE;
                     let row = (position.y - TOP_PADDING) / TILE_SIZE;
-                    pressed = TilePos::new(col as usize, row as usize, &board);
+                    pressed = TilePos::new(col as usize, row as usize, board);
                 }
             }
         };
+        // update tile appearence
         for (mut sprite, &pos) in &mut tile_sprites_query {
             let tile_state = board.tile_state(pos);
             if let Some(pressed_pos) = pressed {
@@ -478,12 +494,21 @@ fn sync_board_with_tile_sprites(
                     && matches!(tile_state, TileState::Covered)
                     && pos == pressed_pos
                 {
-                    let index = sprite_sheet_index(TileState::UncoveredSafe(0));
+                    let index = tile_sheet_index(TileState::UncoveredSafe(0));
                     sprite.index = index;
                     continue;
                 }
             }
-            let index = sprite_sheet_index(tile_state);
+            let index = tile_sheet_index(tile_state);
+            sprite.index = index;
+        }
+        // update bomb counter
+        let display_string = format!("{:#03}", board.num_bombs_left());
+        let iter = display_string
+            .chars()
+            .map(digit_sheet_index)
+            .zip(bomb_counter_digits.iter_mut());
+        for (index, (mut sprite, _)) in iter {
             sprite.index = index;
         }
     }

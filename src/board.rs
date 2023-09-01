@@ -142,6 +142,12 @@ impl Board {
 
     fn set(&mut self, pos: TilePos, state: TileState) {
         let index = self.index(pos);
+        // flagging or unflagging changes num_bombs_left
+        self.num_bombs_left += match (self.tile_states[index], state) {
+            (TileState::Covered, TileState::Flagged) => -1,
+            (TileState::Flagged, TileState::Covered) => 1,
+            _ => 0,
+        };
         self.tile_states[index] = state;
     }
 
@@ -246,12 +252,10 @@ impl Board {
             // flag
             (TileState::Covered, ActionType::Flag) => {
                 self.set(pos, TileState::Flagged);
-                self.num_bombs_left -= 1;
             }
             // unflag
             (TileState::Flagged, ActionType::Flag) => {
                 self.set(pos, TileState::Covered);
-                self.num_bombs_left += 1;
             }
             // uncover
             (TileState::Covered, ActionType::Uncover) => {

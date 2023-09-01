@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
-use bevy_framepace;
 use minesweeper::{simulate_n_games, GamePlugin, WINDOW_HEIGHT, WINDOW_WIDTH};
 use std::env;
 
