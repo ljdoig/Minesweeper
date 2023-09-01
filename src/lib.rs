@@ -12,7 +12,7 @@ use board::*;
 pub const WINDOW_HEIGHT: f32 = 600.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SIZE: f32 = 12.0;
-const TOP_PADDING_SIZE: f32 = 12.0;
+const TOP_PADDING_SIZE: f32 = 60.0;
 
 const UNSCALED_HEIGHT: f32 = GRID_SIZE.1 as f32 * TILE_SPRITE_SIZE
     + TOP_PADDING_SIZE
@@ -31,7 +31,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_state::<GameState>()
             .add_state::<AgentState>()
-            .add_systems(Startup, setup_game)
+            .add_systems(Startup, setup)
             .add_systems(Update, close_on_esc)
             .add_systems(Update, check_restart)
             .add_systems(
@@ -67,14 +67,28 @@ pub struct Record {
     dnf: usize,
 }
 
-fn setup_game(
+#[derive(Component)]
+pub struct DisplayDigits;
+
+fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     mut settings: ResMut<FramepaceSettings>,
 ) {
-    settings.limiter = Limiter::from_framerate(60.0);
+    settings.limiter = Limiter::from_framerate(40.0);
     commands.spawn(Camera2dBundle::default());
+    spawn_board(&mut commands, &asset_server, &mut texture_atlases);
+    spawn_bomb_display(&mut commands, &asset_server, &mut texture_atlases);
+    spawn_padding(&mut commands, &asset_server);
+    commands.spawn(Record::default());
+}
+
+fn spawn_board(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+) {
     let texture_handle =
         asset_server.load("spritesheets/minesweeper_tiles.png");
     let texture_atlas = TextureAtlas::from_grid(
@@ -86,37 +100,94 @@ fn setup_game(
         None,
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    for col in 0..GRID_SIZE.0 {
-        for row in 0..GRID_SIZE.1 {
-            let tile_sprite = TilePos { col, row };
-            let sprite_sheet_index = sprite_sheet_index(TileState::Covered);
-            commands.spawn((
-                SpriteSheetBundle {
-                    texture_atlas: texture_atlas_handle.clone(),
-                    sprite: TextureAtlasSprite::new(sprite_sheet_index),
-                    transform: Transform::from_translation(
-                        tile_sprite.screen_pos().extend(0.0),
-                    )
-                    .with_scale(Vec3::splat(SCALE)),
-                    ..default()
-                },
-                tile_sprite,
-            ));
-        }
-    }
-
-    spawn_padding(&mut commands, asset_server);
     let board = Board::new(GRID_SIZE);
-    commands.spawn(board);
-    commands.spawn(Record::default());
+    commands
+        .spawn(board)
+        .insert(SpatialBundle::from_transform(
+            // centre of board
+            Transform::from_xyz(0.0, -(TOP_PADDING - EDGE_PADDING) / 2.0, 0.0),
+        ))
+        .with_children(|parent| {
+            for col in 0..GRID_SIZE.0 {
+                for row in 0..GRID_SIZE.1 {
+                    let tile_sprite = TilePos { col, row };
+                    let sprite_sheet_index =
+                        sprite_sheet_index(TileState::Covered);
+                    parent.spawn((
+                        SpriteSheetBundle {
+                            texture_atlas: texture_atlas_handle.clone(),
+                            sprite: TextureAtlasSprite::new(sprite_sheet_index),
+                            transform: Transform {
+                                translation: tile_sprite.pos_on_board(),
+                                scale: Vec3::splat(SCALE),
+                                ..default()
+                            },
+                            ..default()
+                        },
+                        tile_sprite,
+                    ));
+                }
+            }
+        });
 }
 
-fn spawn_padding(commands: &mut Commands, asset_server: Res<AssetServer>) {
+fn spawn_bomb_display(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+) {
+    let texture_handle = asset_server.load("spritesheets/numbers.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::new(13.0, 23.0),
+        12,
+        1,
+        Some(Vec2::new(1.0, 13.0)),
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let transform = Transform {
+        translation: Vec3::Y * (WINDOW_HEIGHT - TOP_PADDING) / 2.0,
+        scale: Vec3::splat(SCALE),
+        ..default()
+    };
+    commands
+        .spawn(DisplayDigits)
+        .insert(SpatialBundle::from_transform(transform))
+        .with_children(|parent| {
+            parent.spawn(SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle.clone(),
+                sprite: TextureAtlasSprite::new(0),
+                transform: Transform::from_translation(Vec3::X * -23.0 / SCALE),
+                ..default()
+            });
+            parent.spawn(SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle.clone(),
+                sprite: TextureAtlasSprite::new(0),
+                ..default()
+            });
+            parent.spawn(SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(0),
+                transform: Transform::from_translation(Vec3::X * 23.0 / SCALE),
+                ..default()
+            });
+        });
+}
+
+fn spawn_padding(commands: &mut Commands, asset_server: &Res<AssetServer>) {
     // verticals
     let horizontal_offset =
         Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
     spawn_padding_piece(commands, &asset_server, horizontal_offset, false);
     spawn_padding_piece(commands, &asset_server, -horizontal_offset, false);
+    // very top
+    spawn_padding_piece(
+        commands,
+        &asset_server,
+        Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - EDGE_PADDING / 2.0),
+        true,
+    );
     // horizontals
     let board_centre =
         Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - TOP_PADDING - BOARD_HEIGHT / 2.0);
@@ -182,22 +253,18 @@ impl TilePos {
     }
 
     pub fn squared_distance(self, other: TilePos) -> usize {
-        let col1 = self.col as isize;
-        let row1 = self.row as isize;
-        let col2 = other.col as isize;
-        let row2 = other.row as isize;
-        ((col1 - col2).pow(2) + (row1 - row2).pow(2)) as usize
+        self.col.abs_diff(other.col).pow(2)
+            + self.row.abs_diff(other.row).pow(2)
     }
 }
 
 impl TilePos {
-    fn screen_pos(&self) -> Vec2 {
+    fn pos_on_board(&self) -> Vec3 {
         let translation_x =
             TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
-        let translation_y = TILE_SIZE
-            * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0)
-            - (TOP_PADDING - EDGE_PADDING) / 2.0;
-        Vec2::new(translation_x, translation_y)
+        let translation_y =
+            TILE_SIZE * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0);
+        Vec3::new(translation_x, translation_y, 0.0)
     }
 }
 
