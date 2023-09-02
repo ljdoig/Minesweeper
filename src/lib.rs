@@ -52,7 +52,6 @@ impl Plugin for GamePlugin {
             .add_state::<AgentState>()
             .add_systems(Startup, setup)
             .add_systems(Update, close_on_esc)
-            .add_systems(Update, check_restart)
             .add_systems(
                 Update,
                 (check_bot_action, check_player_action)
@@ -60,8 +59,9 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 Last,
-                sync_board_with_tile_sprites.after(check_player_action),
-            );
+                check_restart.before(sync_board_with_tile_sprites),
+            )
+            .add_systems(Last, sync_board_with_tile_sprites);
     }
 }
 
