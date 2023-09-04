@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
-use minesweeper::{simulate_n_games, GamePlugin, WINDOW_HEIGHT, WINDOW_WIDTH};
+use minesweeper::setup::UISizing;
+use minesweeper::{simulate_n_games, Difficulty, GamePlugin};
 use std::env;
 
 fn main() {
@@ -10,12 +11,15 @@ fn main() {
         simulate_n_games(n);
         return;
     }
+    let ui_sizing = UISizing::new(Difficulty::default().grid_size());
+    let window_size = ui_sizing.window_size;
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.75, 0.75, 0.75)))
+        .insert_resource(ui_sizing)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Minesweeper".to_string(), // ToDo
-                resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
+                resolution: window_size.into(),
                 // Bind to canvas included in `index.html`
                 canvas: Some("#bevy".to_owned()),
                 // Tells wasm not to override default event handling, like F5 and Ctrl+R

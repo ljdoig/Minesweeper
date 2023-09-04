@@ -1,8 +1,7 @@
 use super::*;
 use crate::TilePos;
 use instant::Instant;
-use itertools::Itertools;
-use itertools::MinMaxResult;
+use itertools::{Itertools, MinMaxResult};
 
 fn case_weight(
     num_bombs_omitted: u32,

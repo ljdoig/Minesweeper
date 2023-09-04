@@ -1,14 +1,6 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
 
-use crate::TilePos;
-
-const NUM_BOMBS: usize = 99;
-pub const GRID_SIZE: (usize, usize) = (30, 16);
-
-// const NUM_BOMBS: usize = 10;
-// pub const GRID_SIZE: (usize, usize) = (9, 9);
-
 #[derive(Debug, PartialEq)]
 pub struct Action {
     pub pos: TilePos,
@@ -53,6 +45,21 @@ pub enum TileState {
     Misflagged,
 }
 
+#[derive(
+    Component, Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord,
+)]
+pub struct TilePos {
+    pub col: usize,
+    pub row: usize,
+}
+
+impl TilePos {
+    pub fn squared_distance(self, other: TilePos) -> usize {
+        self.col.abs_diff(other.col).pow(2)
+            + self.row.abs_diff(other.row).pow(2)
+    }
+}
+
 #[derive(Component, Clone)]
 pub struct Board {
     width: usize,
@@ -66,14 +73,14 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new((width, height): (usize, usize)) -> Board {
+    pub fn new((width, height): (usize, usize), num_bombs: usize) -> Board {
         let mut board = Board {
             width,
             height,
             tile_states: vec![],
             bombs: vec![],
             num_bombs_left: 0,
-            num_bombs_total: NUM_BOMBS,
+            num_bombs_total: num_bombs,
             first_uncovered: false,
             seed: 0,
         };
@@ -82,7 +89,7 @@ impl Board {
     }
 
     pub fn reset(&mut self, seed: Option<u64>) {
-        println!("Beginning game with {} bombs", NUM_BOMBS);
+        println!("Beginning game with {} bombs", self.num_bombs_total);
         self.tile_states = vec![TileState::Covered; self.width * self.height];
         self.sample_bombs(seed);
         self.num_bombs_left = self.num_bombs_total as isize;
@@ -128,11 +135,13 @@ impl Board {
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
         // self.seed = 5913895412333589340;
+        // self.seed = 13757214182163412247;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
         let sample =
-            sample(&mut rng, self.width * self.height, NUM_BOMBS).into_vec();
+            sample(&mut rng, self.width * self.height, self.num_bombs_total)
+                .into_vec();
 
         // Mark the corresponding tiles as bombs
         for &index in &sample {

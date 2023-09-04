@@ -1,9 +1,7 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
-use bevy_framepace::{FramepaceSettings, Limiter};
 use instant::Instant;
-use std::f32::consts::PI;
-use std::fmt;
+use std::fmt::{self, Display, Formatter};
 
 // redirect println! to console.log in wasm
 #[cfg(target_family = "wasm")]
@@ -22,27 +20,13 @@ custom_print::define_macros!({ cprintln }, concat, unsafe fn (crate::log)(&str))
 #[cfg(target_family = "wasm")]
 macro_rules! println { ($($args:tt)*) => { cprintln!($($args)*); } }
 
-mod agent;
+mod actions;
 mod board;
+pub mod setup;
 
+use actions::{agent, *};
 use board::*;
-
-pub const WINDOW_HEIGHT: f32 = 600.0;
-const TILE_SPRITE_SIZE: f32 = 16.0;
-const EDGE_PADDING_SIZE: f32 = 12.0;
-const TOP_PADDING_SIZE: f32 = 60.0;
-const DIGIT_SPRITE_SIZE: (f32, f32) = (13.0, 23.0);
-
-const UNSCALED_HEIGHT: f32 = GRID_SIZE.1 as f32 * TILE_SPRITE_SIZE
-    + TOP_PADDING_SIZE
-    + EDGE_PADDING_SIZE;
-const SCALE: f32 = WINDOW_HEIGHT / UNSCALED_HEIGHT;
-const TILE_SIZE: f32 = TILE_SPRITE_SIZE * SCALE;
-const EDGE_PADDING: f32 = EDGE_PADDING_SIZE * SCALE;
-const TOP_PADDING: f32 = TOP_PADDING_SIZE * SCALE;
-const BOARD_HEIGHT: f32 = WINDOW_HEIGHT - TOP_PADDING - EDGE_PADDING;
-const BOARD_WIDTH: f32 = TILE_SIZE * GRID_SIZE.0 as f32;
-pub const WINDOW_WIDTH: f32 = BOARD_WIDTH + 2.0 * EDGE_PADDING;
+use setup::{setup, UISizing};
 
 pub struct GamePlugin;
 
@@ -50,6 +34,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_state::<GameState>()
             .add_state::<AgentState>()
+            .add_state::<Difficulty>()
             .add_systems(Startup, setup)
             .add_systems(Update, close_on_esc)
             .add_systems(
@@ -79,6 +64,38 @@ pub enum AgentState {
     Thinking,
 }
 
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub enum Difficulty {
+    Easy,
+    Medium,
+    #[default]
+    Hard,
+}
+
+impl Display for Difficulty {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(format!("{:?}", self).as_ref())
+    }
+}
+
+impl Difficulty {
+    pub fn num_bombs(&self) -> usize {
+        match self {
+            Difficulty::Easy => 10,
+            Difficulty::Medium => 40,
+            Difficulty::Hard => 99,
+        }
+    }
+
+    pub fn grid_size(&self) -> (usize, usize) {
+        match self {
+            Difficulty::Easy => (10, 10),
+            Difficulty::Medium => (16, 16),
+            Difficulty::Hard => (30, 16),
+        }
+    }
+}
+
 #[derive(Component, Debug, Default)]
 pub struct Record {
     win: usize,
@@ -98,8 +115,8 @@ impl Record {
     }
 }
 
-impl fmt::Display for Record {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Record {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let string = format!(
             "{}-{}-{} ({:.2}% win rate, {:.2}% bombs cleared)",
             self.win,
@@ -109,205 +126,6 @@ impl fmt::Display for Record {
             100.0 * self.clearance_rate(),
         );
         f.write_str(string.as_ref())
-    }
-}
-
-#[derive(Component)]
-pub struct BombCounterDigit;
-
-fn setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut settings: ResMut<FramepaceSettings>,
-) {
-    settings.limiter = Limiter::from_framerate(40.0);
-    commands.spawn(Camera2dBundle::default());
-    spawn_board(&mut commands, &asset_server, &mut texture_atlases);
-    spawn_bomb_display(&mut commands, &asset_server, &mut texture_atlases);
-    spawn_padding(&mut commands, &asset_server);
-    commands.spawn(Record::default());
-}
-
-fn spawn_board(
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
-) {
-    let texture_handle =
-        asset_server.load("spritesheets/minesweeper_tiles.png");
-    let texture_atlas = TextureAtlas::from_grid(
-        texture_handle,
-        Vec2::splat(TILE_SPRITE_SIZE),
-        4,
-        4,
-        None,
-        None,
-    );
-    let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    let board = Board::new(GRID_SIZE);
-    commands
-        .spawn(board)
-        .insert(SpatialBundle::from_transform(
-            // centre of board
-            Transform::from_xyz(0.0, -(TOP_PADDING - EDGE_PADDING) / 2.0, 0.0),
-        ))
-        .with_children(|parent| {
-            for col in 0..GRID_SIZE.0 {
-                for row in 0..GRID_SIZE.1 {
-                    let tile_sprite = TilePos { col, row };
-                    let sprite_sheet_index =
-                        tile_sheet_index(TileState::Covered);
-                    parent.spawn((
-                        SpriteSheetBundle {
-                            texture_atlas: texture_atlas_handle.clone(),
-                            sprite: TextureAtlasSprite::new(sprite_sheet_index),
-                            transform: Transform {
-                                translation: tile_sprite.pos_on_board(),
-                                scale: Vec3::splat(SCALE),
-                                ..default()
-                            },
-                            ..default()
-                        },
-                        tile_sprite,
-                    ));
-                }
-            }
-        });
-}
-
-fn spawn_bomb_display(
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
-) {
-    let texture_handle = asset_server.load("spritesheets/numbers.png");
-    let texture_atlas = TextureAtlas::from_grid(
-        texture_handle,
-        Vec2::new(DIGIT_SPRITE_SIZE.0, DIGIT_SPRITE_SIZE.1),
-        12,
-        1,
-        Some(Vec2::new(1.0, DIGIT_SPRITE_SIZE.1)),
-        None,
-    );
-    let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    let transform = Transform {
-        translation: Vec3::Y * (WINDOW_HEIGHT - TOP_PADDING) / 2.0,
-        scale: Vec3::splat(SCALE),
-        ..default()
-    };
-    commands
-        .spawn(SpatialBundle::from_transform(transform))
-        .with_children(|parent| {
-            let digit_spacing = Vec3::X * DIGIT_SPRITE_SIZE.1 / SCALE;
-            let spawn_new_digit = |i| {
-                let new_digit = (
-                    SpriteSheetBundle {
-                        texture_atlas: texture_atlas_handle.clone(),
-                        sprite: TextureAtlasSprite::new(0),
-                        transform: Transform::from_translation(
-                            digit_spacing * i as f32,
-                        ),
-                        ..default()
-                    },
-                    BombCounterDigit,
-                );
-                parent.spawn(new_digit);
-            };
-            (-1..=1).for_each(spawn_new_digit);
-        });
-}
-
-fn spawn_padding(commands: &mut Commands, asset_server: &Res<AssetServer>) {
-    // verticals
-    let horizontal_offset =
-        Vec2::new(BOARD_WIDTH / 2.0 + EDGE_PADDING / 2.0, 0.0);
-    spawn_padding_piece(commands, asset_server, horizontal_offset, false);
-    spawn_padding_piece(commands, asset_server, -horizontal_offset, false);
-    // very top
-    spawn_padding_piece(
-        commands,
-        asset_server,
-        Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - EDGE_PADDING / 2.0),
-        true,
-    );
-    // horizontals
-    let board_centre =
-        Vec2::new(0.0, WINDOW_HEIGHT / 2.0 - TOP_PADDING - BOARD_HEIGHT / 2.0);
-    let vertical_offset =
-        Vec2::new(0.0, BOARD_HEIGHT / 2.0 + EDGE_PADDING / 2.0);
-    spawn_padding_piece(
-        commands,
-        asset_server,
-        board_centre + vertical_offset,
-        true,
-    );
-    spawn_padding_piece(
-        commands,
-        asset_server,
-        board_centre - vertical_offset,
-        true,
-    );
-}
-
-fn spawn_padding_piece(
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    centre: Vec2,
-    horizontal: bool,
-) {
-    let (rotation, scale) = if horizontal {
-        (
-            Quat::from_rotation_z(-PI / 2.0),
-            Vec2::new(
-                SCALE,
-                (BOARD_WIDTH + EDGE_PADDING * 2.0) / TILE_SPRITE_SIZE,
-            ),
-        )
-    } else {
-        (
-            Quat::IDENTITY,
-            Vec2::new(SCALE, WINDOW_HEIGHT / TILE_SPRITE_SIZE),
-        )
-    };
-    commands.spawn(SpriteBundle {
-        texture: asset_server.load("padding.png"),
-        transform: Transform {
-            rotation,
-            scale: scale.extend(1.0),
-            translation: centre.extend(1.0),
-        },
-        ..default()
-    });
-}
-
-#[derive(
-    Component, Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord,
-)]
-pub struct TilePos {
-    col: usize,
-    row: usize,
-}
-
-impl TilePos {
-    pub fn new(col: usize, row: usize, board: &Board) -> Option<TilePos> {
-        (col < board.width() && row < board.height())
-            .then_some(TilePos { col, row })
-    }
-
-    pub fn squared_distance(self, other: TilePos) -> usize {
-        self.col.abs_diff(other.col).pow(2)
-            + self.row.abs_diff(other.row).pow(2)
-    }
-}
-
-impl TilePos {
-    fn pos_on_board(&self) -> Vec3 {
-        let translation_x =
-            TILE_SIZE * (self.col as f32 - (GRID_SIZE.0 - 1) as f32 / 2.0);
-        let translation_y =
-            TILE_SIZE * -(self.row as f32 - (GRID_SIZE.1 - 1) as f32 / 2.0);
-        Vec3::new(translation_x, translation_y, 0.0)
     }
 }
 
@@ -333,183 +151,12 @@ fn digit_sheet_index(c: char) -> usize {
     }
 }
 
-fn check_restart(
-    keys: Res<Input<KeyCode>>,
-    mut board_query: Query<&mut Board>,
-    mut next_app_state: ResMut<NextState<GameState>>,
-    mut next_agent_state: ResMut<NextState<AgentState>>,
-    app_state: ResMut<State<GameState>>,
-    mut record_query: Query<&mut Record>,
-) {
-    let mut board = board_query.get_single_mut().unwrap();
-    // avoid repeated restart
-    if !board.first_uncovered() {
-        return;
-    }
-    let replay = keys.just_pressed(KeyCode::R);
-    if keys.just_pressed(KeyCode::Return) || replay {
-        let mut record = record_query.get_single_mut().unwrap();
-        if matches!(app_state.get(), GameState::Game) {
-            end_game(&mut record, &ActionResult::Continue, &board);
-        }
-        next_app_state.set(GameState::Game);
-        next_agent_state.set(AgentState::Resting);
-        let seed = replay.then_some(board.seed());
-        board.reset(seed);
-    }
-}
-
-fn check_player_action(
-    buttons: Res<Input<MouseButton>>,
-    q_windows: Query<&Window, With<PrimaryWindow>>,
-    mut board_query: Query<&mut Board>,
-    mut next_app_state: ResMut<NextState<GameState>>,
-    agent_state: ResMut<State<AgentState>>,
-    mut record_query: Query<&mut Record>,
-) {
-    if matches!(agent_state.get(), AgentState::Thinking) {
-        return;
-    }
-    let mut board = board_query.get_single_mut().unwrap();
-    let mut record = record_query.get_single_mut().unwrap();
-    if let Some(position) = q_windows.single().cursor_position() {
-        let action_type = if buttons.just_released(MouseButton::Left) {
-            Some(ActionType::Uncover)
-        } else if buttons.just_pressed(MouseButton::Right) {
-            Some(ActionType::Flag)
-        } else {
-            None
-        };
-        if let Some(action_type) = action_type {
-            // this ensures we can't click slightly above the first row/col
-            if position.x > EDGE_PADDING && position.y > TOP_PADDING {
-                let col = ((position.x - EDGE_PADDING) / TILE_SIZE) as usize;
-                let row = ((position.y - TOP_PADDING) / TILE_SIZE) as usize;
-                let pos = TilePos::new(col, row, &board);
-                if let Some(pos) = pos {
-                    if !matches!(
-                        board.tile_state(pos),
-                        TileState::UncoveredSafe(_)
-                    ) {
-                        let action = Action { pos, action_type };
-                        complete_action(
-                            &mut board,
-                            action,
-                            &mut next_app_state,
-                            &mut record,
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn check_bot_action(
-    keys: Res<Input<KeyCode>>,
-    mut board_query: Query<&mut Board>,
-    mut next_app_state: ResMut<NextState<GameState>>,
-    mut next_agent_state: ResMut<NextState<AgentState>>,
-    agent_state: ResMut<State<AgentState>>,
-    mut record_query: Query<&mut Record>,
-) {
-    let mut board = board_query.get_single_mut().unwrap();
-    let mut record = record_query.get_single_mut().unwrap();
-    if keys.just_pressed(KeyCode::Space) {
-        next_agent_state.set(AgentState::Thinking)
-    }
-    if matches!(agent_state.get(), AgentState::Thinking) {
-        let actions = agent::get_all_actions(&board);
-        if actions.is_empty() {
-            next_agent_state.set(AgentState::Resting)
-        }
-        for action in actions {
-            let result = complete_action(
-                &mut board,
-                action,
-                &mut next_app_state,
-                &mut record,
-            );
-            if result != ActionResult::Continue {
-                next_agent_state.set(AgentState::Resting);
-                return;
-            }
-        }
-    }
-    let trivial = keys.just_pressed(KeyCode::Key1);
-    let non_trivial = keys.just_pressed(KeyCode::Key2);
-    if trivial || non_trivial {
-        let mut actions = if trivial {
-            agent::get_trivial_actions(&board)
-        } else {
-            agent::deductions::get_non_trivial_actions(&board)
-        };
-        while !actions.is_empty() {
-            for action in actions {
-                let result = complete_action(
-                    &mut board,
-                    action,
-                    &mut next_app_state,
-                    &mut record,
-                );
-                if result != ActionResult::Continue {
-                    return;
-                }
-            }
-            actions = if trivial {
-                agent::get_trivial_actions(&board)
-            } else {
-                break;
-            };
-        }
-    }
-    if keys.just_pressed(KeyCode::Key3) {
-        let action = agent::guesses::make_guess(&board);
-        complete_action(&mut board, action, &mut next_app_state, &mut record);
-    }
-}
-
-fn end_game(record: &mut Record, result: &ActionResult, board: &Board) {
-    match result {
-        ActionResult::Win => {
-            record.win += 1;
-            println!("You won!");
-        }
-        ActionResult::Lose => {
-            record.loss += 1;
-            println!("You lost");
-        }
-        ActionResult::Continue => {
-            record.dnf += 1;
-            println!("You didn't finish the game...");
-        }
-    }
-    record.total_bombs_cleared +=
-        board.num_bombs_total() - board.num_bombs_left() as usize;
-    record.total_bombs += board.num_bombs_total();
-    println!("Record: {}\n", record);
-}
-
-fn complete_action(
-    board: &mut Board,
-    action: Action,
-    next_app_state: &mut ResMut<NextState<GameState>>,
-    record: &mut Record,
-) -> ActionResult {
-    let result = board.apply_action(action);
-    match result {
-        ActionResult::Win | ActionResult::Lose => {
-            end_game(record, &result, board);
-            next_app_state.set(GameState::GameOver);
-        }
-        ActionResult::Continue => {}
-    }
-    result
-}
+#[derive(Component)]
+pub struct BombCounterDigit;
 
 fn sync_board_with_tile_sprites(
-    board_query: Query<&Board>,
-    mut tile_sprites_query: Query<(&mut TextureAtlasSprite, &TilePos)>,
+    q_board: Query<&Board>,
+    mut q_tile_sprites: Query<(&mut TextureAtlasSprite, &TilePos)>,
     mut bomb_counter_digits: Query<
         (&mut TextureAtlasSprite, &BombCounterDigit),
         Without<TilePos>,
@@ -517,21 +164,18 @@ fn sync_board_with_tile_sprites(
     app_state: ResMut<State<GameState>>,
     buttons: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
+    ui_sizing: Res<UISizing>,
 ) {
-    if let Ok(board) = board_query.get_single() {
+    if let Ok(board) = q_board.get_single() {
         // check if mouse is down over a tile
         let mut pressed = None;
         if buttons.pressed(MouseButton::Left) {
             if let Some(position) = q_windows.single().cursor_position() {
-                if position.x > EDGE_PADDING && position.y > TOP_PADDING {
-                    let col = (position.x - EDGE_PADDING) / TILE_SIZE;
-                    let row = (position.y - TOP_PADDING) / TILE_SIZE;
-                    pressed = TilePos::new(col as usize, row as usize, board);
-                }
+                pressed = ui_sizing.clicked_tile_pos(position);
             }
         };
         // update tile appearence
-        for (mut sprite, &pos) in &mut tile_sprites_query {
+        for (mut sprite, &pos) in &mut q_tile_sprites {
             let tile_state = board.tile_state(pos);
             if let Some(pressed_pos) = pressed {
                 if matches!(app_state.get(), GameState::Game)
@@ -564,7 +208,7 @@ pub fn simulate_n_games(n: usize) {
     let mut longest_game: f32 = 0.0;
     let start = Instant::now();
     for i in 1..=n {
-        let mut board = Board::new(GRID_SIZE);
+        let mut board = Board::new((30, 16), 99);
         let game_start = Instant::now();
         'game: loop {
             for action in agent::get_all_actions(&board) {

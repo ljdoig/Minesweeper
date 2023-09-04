@@ -1,4 +1,4 @@
-use crate::{board::*, TilePos};
+use crate::{board::*, Action, TilePos};
 
 pub mod deductions;
 pub mod guesses;

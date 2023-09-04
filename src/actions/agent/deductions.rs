@@ -1,6 +1,5 @@
-use crate::TilePos;
-
 use super::*;
+use crate::TilePos;
 use itertools::Itertools;
 use std::collections::HashMap;
 
