@@ -8,4 +8,7 @@ wasm-bindgen \
     --target web target/wasm32-unknown-unknown/release/minesweeper.wasm
 cat build/append.txt >> Minesweeper/minesweeper.js
 
+rm -r minesweeper/assets
+cp -r assets minesweeper/   
+
 python3 -m http.server 8080

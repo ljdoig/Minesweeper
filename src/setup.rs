@@ -333,6 +333,42 @@ fn spawn_padding(
         horizontal_length,
         scale,
     );
+    // connecters
+    let mut spawn_connecter = |filename: &str, translation: Vec2| {
+        commands.spawn(SpriteBundle {
+            texture: asset_server.load("padding/".to_owned() + filename),
+            transform: Transform {
+                scale: Vec3::splat(scale),
+                translation: translation.extend(2.0),
+                ..default()
+            },
+            ..default()
+        });
+    };
+    spawn_connecter(
+        "top_left_corner.png",
+        window_vertical_offset - horizontal_offset,
+    );
+    spawn_connecter(
+        "top_right_corner.png",
+        window_vertical_offset + horizontal_offset,
+    );
+    spawn_connecter(
+        "bottom_left_corner.png",
+        -window_vertical_offset - horizontal_offset,
+    );
+    spawn_connecter(
+        "bottom_right_corner.png",
+        -window_vertical_offset + horizontal_offset,
+    );
+    spawn_connecter(
+        "middle_left_connecter.png",
+        board_centre + board_vertical_offset - horizontal_offset,
+    );
+    spawn_connecter(
+        "middle_right_connecter.png",
+        board_centre + board_vertical_offset + horizontal_offset,
+    );
 }
 
 fn spawn_padding_piece(
