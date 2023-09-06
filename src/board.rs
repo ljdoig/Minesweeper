@@ -1,6 +1,6 @@
+use crate::Difficulty;
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
-use crate::Difficulty;
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -74,7 +74,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new(difficulty: Difficulty) -> Board {
+    pub fn new(difficulty: Difficulty, seed: Option<u64>) -> Board {
         let (width, height) = difficulty.grid_size();
         let mut board = Board {
             width,
@@ -86,7 +86,7 @@ impl Board {
             first_uncovered: false,
             seed: 0,
         };
-        board.reset(None);
+        board.reset(seed);
         board
     }
 
@@ -137,7 +137,6 @@ impl Board {
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
         // self.seed = 5913895412333589340;
-        // self.seed = 13757214182163412247;
 
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
@@ -201,7 +200,8 @@ impl Board {
 
     fn uncover_first(&mut self, pos: TilePos) {
         while self.num_bombs_around(pos) > 0 || self.bomb(pos) {
-            self.sample_bombs(None);
+            self.seed += 1;
+            self.sample_bombs(Some(self.seed));
         }
         println!("Board seed: {}\n", self.seed);
         self.uncover_safe(pos);

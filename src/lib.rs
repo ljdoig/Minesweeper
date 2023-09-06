@@ -1,6 +1,8 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 use instant::Instant;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::fmt::{self, Display, Formatter};
 
 // redirect println! to console.log in wasm
@@ -224,13 +226,14 @@ fn sync_board_with_tile_sprites(
     }
 }
 
-pub fn simulate_n_games(n: usize, difficulty: Difficulty) {
+pub fn simulate_n_games(n: usize, difficulty: Difficulty, seed: u64) {
     println!("Simulating {n} games on {difficulty}:\n");
     let mut record = Record::new(difficulty);
     let mut longest_game: f32 = 0.0;
+    let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
     let start = Instant::now();
     for i in 1..=n {
-        let mut board = Board::new(Difficulty::default());
+        let mut board = Board::new(difficulty, Some(rng.gen::<u64>()));
         let game_start = Instant::now();
         'game: loop {
             for action in agent::get_all_actions(&board) {
@@ -256,6 +259,9 @@ pub fn simulate_n_games(n: usize, difficulty: Difficulty) {
             start.elapsed().as_secs_f32(),
             longest_game,
         );
-        println!("Simulation {:.2}% complete", 100.0 * (i as f64 / n as f64));
+        println!(
+            "Simulation {:.2}% complete\n",
+            100.0 * (i as f64 / n as f64)
+        );
     }
 }

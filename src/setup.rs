@@ -179,7 +179,7 @@ fn spawn_board(
         None,
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    let board = Board::new(difficulty);
+    let board = Board::new(difficulty, None);
     let (width, height) = (board.width(), board.height());
     commands
         .spawn(board)

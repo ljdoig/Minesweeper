@@ -16,12 +16,16 @@ struct Args {
     /// Difficulty of simulated games
     #[arg(short, long, value_enum, default_value_t)]
     difficulty: Difficulty,
+
+    /// Seed for simulated games
+    #[arg(short, long, default_value_t)]
+    seed: u64,
 }
 
 fn main() {
     let args = Args::parse();
     if args.num_games > 0 {
-        simulate_n_games(args.num_games, args.difficulty);
+        simulate_n_games(args.num_games, args.difficulty, args.seed);
         return;
     }
     let ui_sizing = UISizing::new(Difficulty::default().grid_size());
