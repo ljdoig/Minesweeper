@@ -150,8 +150,7 @@ fn setup_game(
         commands,
         &asset_server,
         &mut texture_atlases,
-        ui_sizing.grid_size,
-        difficulty.num_bombs(),
+        difficulty,
         &ui_sizing,
     );
     spawn_bomb_display(
@@ -168,8 +167,7 @@ fn spawn_board(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
-    grid_size: (usize, usize),
-    num_bombs: usize,
+    difficulty: Difficulty,
     ui_sizing: &UISizing,
 ) {
     let &UISizing {
@@ -189,7 +187,7 @@ fn spawn_board(
         None,
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    let board = Board::new(grid_size, num_bombs);
+    let board = Board::new(difficulty);
     let (width, height) = (board.width(), board.height());
     commands
         .spawn(board)

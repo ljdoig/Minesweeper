@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rand::{rngs::StdRng, seq::index::sample, Rng, SeedableRng};
+use crate::Difficulty;
 
 #[derive(Debug, PartialEq)]
 pub struct Action {
@@ -73,14 +74,15 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new((width, height): (usize, usize), num_bombs: usize) -> Board {
+    pub fn new(difficulty: Difficulty) -> Board {
+        let (width, height) = difficulty.grid_size();
         let mut board = Board {
             width,
             height,
             tile_states: vec![],
             bombs: vec![],
             num_bombs_left: 0,
-            num_bombs_total: num_bombs,
+            num_bombs_total: difficulty.num_bombs(),
             first_uncovered: false,
             seed: 0,
         };

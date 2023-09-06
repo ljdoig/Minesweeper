@@ -1,15 +1,27 @@
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
+use clap::Parser;
 use minesweeper::setup::UISizing;
 use minesweeper::{simulate_n_games, Difficulty, GamePlugin};
-use std::env;
+
+/// Minesweeper game: only need to pass arguments to run simulations
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Number of games to simulate
+    #[arg(short, long, default_value_t)]
+    num_games: usize,
+
+    /// Difficulty of simulated games
+    #[arg(short, long, value_enum, default_value_t)]
+    difficulty: Difficulty,
+}
 
 fn main() {
-    let args: Vec<_> = env::args().collect();
-    if args.len() > 1 {
-        let n: usize = args[1].parse().unwrap();
-        simulate_n_games(n);
+    let args = Args::parse();
+    if args.num_games > 0 {
+        simulate_n_games(args.num_games, args.difficulty);
         return;
     }
     let ui_sizing = UISizing::new(Difficulty::default().grid_size());

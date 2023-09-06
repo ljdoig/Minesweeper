@@ -62,7 +62,9 @@ pub enum AgentState {
     Thinking,
 }
 
-#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+#[derive(
+    States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default, clap::ValueEnum,
+)]
 pub enum Difficulty {
     Easy,
     Medium,
@@ -210,13 +212,13 @@ fn sync_board_with_tile_sprites(
     }
 }
 
-pub fn simulate_n_games(n: usize) {
-    println!("Simulating {n} games:\n");
-    let mut record = Record::default();
+pub fn simulate_n_games(n: usize, difficulty: Difficulty) {
+    println!("Simulating {n} games on {difficulty}:\n");
+    let mut record = Record::new(difficulty);
     let mut longest_game: f32 = 0.0;
     let start = Instant::now();
     for i in 1..=n {
-        let mut board = Board::new((30, 16), 99);
+        let mut board = Board::new(Difficulty::default());
         let game_start = Instant::now();
         'game: loop {
             for action in agent::get_all_actions(&board) {
@@ -242,9 +244,6 @@ pub fn simulate_n_games(n: usize) {
             start.elapsed().as_secs_f32(),
             longest_game,
         );
-        println!(
-            "Simulation {:.2}% complete\n",
-            100.0 * (i as f64 / n as f64)
-        );
+        println!("Simulation {:.2}% complete", 100.0 * (i as f64 / n as f64));
     }
 }
