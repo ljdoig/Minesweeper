@@ -94,7 +94,7 @@ pub fn setup(
         texture_atlases,
         q_windows,
         ui_sizing,
-        difficulty.num_bombs(),
+        **difficulty,
     );
 }
 
@@ -127,7 +127,7 @@ pub fn resize(
         texture_atlases,
         q_windows,
         ui_sizing.into(),
-        new_difficulty.num_bombs(),
+        new_difficulty,
     );
     // despawn old
     for entity in &game_objects {
@@ -141,7 +141,7 @@ fn setup_game(
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
     ui_sizing: Res<UISizing>,
-    num_bombs: usize,
+    difficulty: Difficulty,
 ) {
     let (width, height) = ui_sizing.window_size;
     q_windows.single_mut().resolution.set(width, height);
@@ -151,7 +151,7 @@ fn setup_game(
         &asset_server,
         &mut texture_atlases,
         ui_sizing.grid_size,
-        num_bombs,
+        difficulty.num_bombs(),
         &ui_sizing,
     );
     spawn_bomb_display(
@@ -161,7 +161,7 @@ fn setup_game(
         &ui_sizing,
     );
     spawn_padding(commands, &asset_server, &ui_sizing);
-    commands.spawn(Record::default());
+    commands.spawn(Record::new(difficulty));
 }
 
 fn spawn_board(

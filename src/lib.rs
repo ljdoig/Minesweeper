@@ -101,9 +101,16 @@ pub struct Record {
     dnf: usize,
     total_bombs_cleared: usize,
     total_bombs: usize,
+    difficulty: Difficulty,
 }
 
 impl Record {
+    fn new(difficulty: Difficulty) -> Self {
+        Record {
+            difficulty,
+            ..default()
+        }
+    }
     fn win_rate(&self) -> f64 {
         self.win as f64 / (self.win + self.loss + self.dnf) as f64
     }
@@ -116,10 +123,11 @@ impl Record {
 impl Display for Record {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let string = format!(
-            "{}-{}-{} ({:.2}% win rate, {:.2}% bombs cleared)",
+            "{}-{}-{} on {:?} ({:.2}% win rate, {:.2}% bombs cleared)",
             self.win,
             self.loss,
             self.dnf,
+            self.difficulty,
             100.0 * self.win_rate(),
             100.0 * self.clearance_rate(),
         );
