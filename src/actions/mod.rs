@@ -3,7 +3,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use crate::{
     board::{Action, ActionResult, ActionType, Board, TileState},
     setup::UISizing,
-    AgentState, GameState, Record,
+    AgentState, Difficulty, GameState, Record,
 };
 
 pub mod agent;
@@ -32,6 +32,29 @@ pub fn check_restart(
         let seed = replay.then_some(board.seed());
         board.reset(seed);
     }
+}
+
+pub fn check_change_difficulty(
+    keys: Res<Input<KeyCode>>,
+    difficulty: Res<State<Difficulty>>,
+    mut next_difficulty: ResMut<NextState<Difficulty>>,
+    mut next_app_state: ResMut<NextState<GameState>>,
+    mut next_agent_state: ResMut<NextState<AgentState>>,
+) {
+    let mut set_difficulty = |new_difficulty| {
+        if new_difficulty != **difficulty {
+            next_difficulty.set(new_difficulty);
+            next_app_state.set(GameState::Game);
+            next_agent_state.set(AgentState::Resting);
+        }
+    };
+    if keys.just_pressed(KeyCode::Key8) {
+        set_difficulty(Difficulty::Easy)
+    } else if keys.just_pressed(KeyCode::Key9) {
+        set_difficulty(Difficulty::Medium)
+    } else if keys.just_pressed(KeyCode::Key0) {
+        set_difficulty(Difficulty::Hard)
+    };
 }
 
 pub fn check_player_action(

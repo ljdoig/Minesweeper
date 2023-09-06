@@ -2,7 +2,7 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_framepace::{FramepaceSettings, Limiter};
 use std::f32::consts::PI;
 
-const WINDOW_HEIGHT: f32 = 800.0;
+const WINDOW_HEIGHT: f32 = 700.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SPRITE_SIZE: f32 = 12.0;
 const TOP_PADDING_SPRITE_SIZE: f32 = 60.0;
@@ -79,7 +79,7 @@ impl UISizing {
 }
 
 pub fn setup(
-    commands: Commands,
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
     texture_atlases: ResMut<Assets<TextureAtlas>>,
     mut settings: ResMut<FramepaceSettings>,
@@ -87,9 +87,9 @@ pub fn setup(
     ui_sizing: Res<UISizing>,
     difficulty: Res<State<Difficulty>>,
 ) {
-    settings.limiter = Limiter::from_framerate(40.0);
+    settings.limiter = Limiter::from_framerate(50.0);
     setup_game(
-        commands,
+        &mut commands,
         asset_server,
         texture_atlases,
         q_windows,
@@ -98,8 +98,45 @@ pub fn setup(
     );
 }
 
-pub fn setup_game(
+pub fn resize(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    texture_atlases: ResMut<Assets<TextureAtlas>>,
+    q_windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut ui_sizing: ResMut<UISizing>,
+    game_objects: Query<Entity, Without<Window>>,
+    next_difficulty: ResMut<NextState<Difficulty>>,
+    difficulty: Res<State<Difficulty>>,
+) {
+    let new_difficulty = {
+        if let Some(next_difficulty) = next_difficulty.0 {
+            if next_difficulty != **difficulty {
+                next_difficulty
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+    };
+    println!("\nChanging difficulty level to {}\n", new_difficulty);
+    *ui_sizing = UISizing::new(new_difficulty.grid_size());
+    setup_game(
+        &mut commands,
+        asset_server,
+        texture_atlases,
+        q_windows,
+        ui_sizing.into(),
+        new_difficulty.num_bombs(),
+    );
+    // despawn old
+    for entity in &game_objects {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn setup_game(
+    commands: &mut Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     mut q_windows: Query<&mut Window, With<PrimaryWindow>>,
@@ -110,7 +147,7 @@ pub fn setup_game(
     q_windows.single_mut().resolution.set(width, height);
     commands.spawn(Camera2dBundle::default());
     spawn_board(
-        &mut commands,
+        commands,
         &asset_server,
         &mut texture_atlases,
         ui_sizing.grid_size,
@@ -118,12 +155,12 @@ pub fn setup_game(
         &ui_sizing,
     );
     spawn_bomb_display(
-        &mut commands,
+        commands,
         &asset_server,
         &mut texture_atlases,
         &ui_sizing,
     );
-    spawn_padding(&mut commands, &asset_server, &ui_sizing);
+    spawn_padding(commands, &asset_server, &ui_sizing);
     commands.spawn(Record::default());
 }
 
@@ -265,23 +302,25 @@ fn spawn_padding(
     );
     // horizontals
     let horizontal_length = window_size.0 / TILE_SPRITE_SIZE;
+    let window_vertical_offset =
+        Vec2::Y * (window_size.1 / 2.0 - edge_padding / 2.0);
     // very top
     spawn_padding_piece(
         commands,
         asset_server,
-        Vec2::new(0.0, window_size.1 / 2.0 - edge_padding / 2.0),
+        window_vertical_offset,
         true,
         horizontal_length,
         scale,
     );
     let board_centre =
         Vec2::new(0.0, window_size.1 / 2.0 - top_padding - board_size.1 / 2.0);
-    let vertical_offset =
+    let board_vertical_offset =
         Vec2::new(0.0, board_size.1 / 2.0 + edge_padding / 2.0);
     spawn_padding_piece(
         commands,
         asset_server,
-        board_centre + vertical_offset,
+        board_centre + board_vertical_offset,
         true,
         horizontal_length,
         scale,
@@ -289,7 +328,7 @@ fn spawn_padding(
     spawn_padding_piece(
         commands,
         asset_server,
-        board_centre - vertical_offset,
+        board_centre - board_vertical_offset,
         true,
         horizontal_length,
         scale,
@@ -310,7 +349,7 @@ fn spawn_padding_piece(
         Quat::IDENTITY
     };
     commands.spawn(SpriteBundle {
-        texture: asset_server.load("padding.png"),
+        texture: asset_server.load("padding/padding.png"),
         transform: Transform {
             rotation,
             scale: Vec2::new(scale, length).extend(1.0),

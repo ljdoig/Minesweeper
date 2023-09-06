@@ -26,7 +26,7 @@ pub mod setup;
 
 use actions::{agent, *};
 use board::*;
-use setup::{setup, UISizing};
+use setup::{resize, setup, UISizing};
 
 pub struct GamePlugin;
 
@@ -42,10 +42,8 @@ impl Plugin for GamePlugin {
                 (check_bot_action, check_player_action)
                     .run_if(in_state(GameState::Game)),
             )
-            .add_systems(
-                Last,
-                check_restart.before(sync_board_with_tile_sprites),
-            )
+            .add_systems(PostUpdate, (check_restart, check_change_difficulty))
+            .add_systems(PostUpdate, resize.after(check_change_difficulty))
             .add_systems(Last, sync_board_with_tile_sprites);
     }
 }
@@ -162,6 +160,7 @@ fn sync_board_with_tile_sprites(
         Without<TilePos>,
     >,
     app_state: ResMut<State<GameState>>,
+    agent_state: Res<State<AgentState>>,
     buttons: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     ui_sizing: Res<UISizing>,
@@ -180,6 +179,7 @@ fn sync_board_with_tile_sprites(
             if let Some(pressed_pos) = pressed {
                 if matches!(app_state.get(), GameState::Game)
                     && matches!(tile_state, TileState::Covered)
+                    && matches!(**agent_state, AgentState::Resting)
                     && pos == pressed_pos
                 {
                     let index = tile_sheet_index(TileState::UncoveredSafe(0));

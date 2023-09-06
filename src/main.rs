@@ -1,3 +1,4 @@
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::DefaultPlugins;
 use minesweeper::setup::UISizing;
@@ -16,19 +17,26 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.75, 0.75, 0.75)))
         .insert_resource(ui_sizing)
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Minesweeper".to_string(), // ToDo
-                resolution: window_size.into(),
-                // Bind to canvas included in `index.html`
-                canvas: Some("#bevy".to_owned()),
-                // Tells wasm not to override default event handling, like F5 and Ctrl+R
-                prevent_default_event_handling: false,
-                // fit_canvas_to_parent: true,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Minesweeper".to_string(),
+                        resolution: window_size.into(),
+                        // Bind to canvas included in `index.html`
+                        canvas: Some("#bevy".to_owned()),
+                        // Tells wasm not to override default event handling
+                        prevent_default_event_handling: false,
+                        resizable: false,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(LogPlugin {
+                    level: bevy::log::Level::ERROR,
+                    ..default()
+                }),
+        )
         .add_plugins((GamePlugin, bevy_framepace::FramepacePlugin))
         .run();
 }
