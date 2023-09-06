@@ -39,12 +39,21 @@ impl Plugin for GamePlugin {
             .add_systems(Update, close_on_esc)
             .add_systems(
                 Update,
-                (check_bot_action, check_player_action)
-                    .run_if(in_state(GameState::Game)),
+                check_bot_action.run_if(in_state(GameState::Game)),
+            )
+            .add_systems(
+                Update,
+                check_player_action.run_if(
+                    in_state(GameState::Game)
+                        .and_then(in_state(AgentState::Resting)),
+                ),
             )
             .add_systems(PostUpdate, (check_restart, check_change_difficulty))
             .add_systems(PostUpdate, resize.after(check_change_difficulty))
-            .add_systems(Last, sync_board_with_tile_sprites);
+            .add_systems(
+                Last,
+                (sync_board_with_tile_sprites, sync_bomb_counter),
+            );
     }
 }
 
@@ -162,13 +171,25 @@ fn digit_sheet_index(c: char) -> usize {
 #[derive(Component)]
 pub struct BombCounterDigit;
 
+fn sync_bomb_counter(
+    q_board: Query<&Board>,
+    mut digits: Query<(&mut TextureAtlasSprite, &BombCounterDigit)>,
+) {
+    if let Ok(board) = q_board.get_single() {
+        let display_string = format!("{:#03}", board.num_bombs_left());
+        let iter = display_string
+            .chars()
+            .map(digit_sheet_index)
+            .zip(digits.iter_mut());
+        for (index, (mut sprite, _)) in iter {
+            sprite.index = index;
+        }
+    }
+}
+
 fn sync_board_with_tile_sprites(
     q_board: Query<&Board>,
     mut q_tile_sprites: Query<(&mut TextureAtlasSprite, &TilePos)>,
-    mut bomb_counter_digits: Query<
-        (&mut TextureAtlasSprite, &BombCounterDigit),
-        Without<TilePos>,
-    >,
     app_state: ResMut<State<GameState>>,
     agent_state: Res<State<AgentState>>,
     buttons: Res<Input<MouseButton>>,
@@ -198,15 +219,6 @@ fn sync_board_with_tile_sprites(
                 }
             }
             let index = tile_sheet_index(tile_state);
-            sprite.index = index;
-        }
-        // update bomb counter
-        let display_string = format!("{:#03}", board.num_bombs_left());
-        let iter = display_string
-            .chars()
-            .map(digit_sheet_index)
-            .zip(bomb_counter_digits.iter_mut());
-        for (index, (mut sprite, _)) in iter {
             sprite.index = index;
         }
     }

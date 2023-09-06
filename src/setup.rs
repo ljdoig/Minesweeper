@@ -106,18 +106,10 @@ pub fn resize(
     mut ui_sizing: ResMut<UISizing>,
     game_objects: Query<Entity, Without<Window>>,
     next_difficulty: ResMut<NextState<Difficulty>>,
-    difficulty: Res<State<Difficulty>>,
 ) {
-    let new_difficulty = {
-        if let Some(next_difficulty) = next_difficulty.0 {
-            if next_difficulty != **difficulty {
-                next_difficulty
-            } else {
-                return;
-            }
-        } else {
-            return;
-        }
+    let new_difficulty = match next_difficulty.0 {
+        Some(new_difficulty) => new_difficulty,
+        None => return,
     };
     println!("\nChanging difficulty level to {}\n", new_difficulty);
     *ui_sizing = UISizing::new(new_difficulty.grid_size());

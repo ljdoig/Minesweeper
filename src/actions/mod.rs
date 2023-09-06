@@ -62,13 +62,9 @@ pub fn check_player_action(
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut q_board: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
-    agent_state: ResMut<State<AgentState>>,
     mut q_record: Query<&mut Record>,
     ui_sizing: Res<UISizing>,
 ) {
-    if matches!(agent_state.get(), AgentState::Thinking) {
-        return;
-    }
     let mut board = q_board.get_single_mut().unwrap();
     let mut record = q_record.get_single_mut().unwrap();
     if let Some(position) = q_windows.single().cursor_position() {
