@@ -4,15 +4,18 @@ use instant::Instant;
 use itertools::{Itertools, MinMaxResult};
 
 fn case_weight(
-    num_bombs_omitted: u32,
-    num_non_boundary_covered: u32,
-    min_bombs_omitted: u32,
+    num_bombs_omitted: usize,
+    num_non_boundary_covered: usize,
+    min_bombs_omitted: usize,
 ) -> f64 {
     // bit of combinatorics here: weight should be proportional to
     // `num_non_boundary_tiles` choose `num_bombs_omitted`
     // to save space we divide all weights by
     // `num_non_boundary_tiles` choose `min_bombs_omitted`
     // this is the result after that division:
+    if num_bombs_omitted > num_non_boundary_covered {
+        return 0.0;
+    }
     let num_bombs_omitted = num_bombs_omitted as u128;
     let num_non_boundary_covered = num_non_boundary_covered as u128;
     let min_bombs_omitted = min_bombs_omitted as u128;
@@ -57,6 +60,19 @@ fn validate(
     true
 }
 
+fn validate_final(
+    bomb_subset: u128,
+    boundary_constraints: &Vec<(u8, u128)>,
+) -> bool {
+    for &(constraint, subset) in boundary_constraints {
+        let bombs_in_subset = (bomb_subset & subset).count_ones() as u8;
+        if bombs_in_subset != constraint {
+            return false;
+        }
+    }
+    return true;
+}
+
 fn tile_vec_to_u128(
     tile_vec: &[TilePos],
     covered_boundary: &[TilePos],
@@ -98,10 +114,10 @@ fn elapsed_time_string(instant: &Instant) -> String {
     format!("{:>7}", str)
 }
 
-fn legal_bomb_candidates(
+fn legal_scenario_info(
     boundary_constraints: &Vec<(u8, u128)>,
     boundary_size: usize,
-) -> Vec<u128> {
+) -> ([[usize; 100]; 128], [usize; 100], usize) {
     let mut nbits_left = boundary_size;
     let mut bins = vec![];
     let nbins = if boundary_size <= 32 { 2 } else { 8 };
@@ -119,7 +135,7 @@ fn legal_bomb_candidates(
         }
         bins.push((bin, mask));
     }
-    while bins.len() >= 2 {
+    while bins.len() > 2 {
         let (bin1, mask1) = bins.pop().unwrap();
         let (bin2, mask2) = bins.pop().unwrap();
         let mut new_bin = vec![];
@@ -140,8 +156,36 @@ fn legal_bomb_candidates(
         }
         bins.insert(0, (new_bin, new_mask));
     }
-    let (bin, _) = bins.pop().unwrap();
-    bin
+    // final 2
+    let (bin1, mask1) = bins.pop().unwrap();
+    let (bin2, mask2) = bins.pop().unwrap();
+    assert_eq!(boundary_size, (mask1 | mask2).count_ones() as usize);
+    assert_eq!(0, mask1 & mask2);
+    let merging_constraints = boundary_constraints
+        .iter()
+        .cloned()
+        .filter(|(_, subset)| subset & mask1 > 0 && subset & mask2 > 0)
+        .collect_vec();
+
+    let mut num_bombs_counters = [[0; 100]; 128];
+    let mut total_num_bombs_counter = [0; 100];
+    let mut num_scenarios = 0;
+    for (subset1, subset2) in bin1.iter().cartesian_product(bin2) {
+        let bomb_subset = subset1 | subset2;
+        if validate_final(bomb_subset, &merging_constraints) {
+            num_scenarios += 1;
+            let num_bombs = bomb_subset.count_ones() as usize;
+            for (i, num_bombs_counters) in
+                num_bombs_counters.iter_mut().enumerate()
+            {
+                if bomb_subset & (1 << i) > 0 {
+                    num_bombs_counters[num_bombs] += 1;
+                }
+            }
+            total_num_bombs_counter[num_bombs] += 1;
+        }
+    }
+    (num_bombs_counters, total_num_bombs_counter, num_scenarios)
 }
 
 fn get_high_probability_guess(
@@ -154,41 +198,38 @@ fn get_high_probability_guess(
     let covered_boundary = sensible_ordering(covered_boundary);
     let boundary_constraints =
         get_boundary_constraints(board, &covered_boundary);
-    let total_num_bombs_left = board.num_bombs_left() as u32;
-    let num_non_boundary_covered =
-        (all_covered.len() - covered_boundary.len()) as u32;
-    let mut candidates =
-        legal_bomb_candidates(&boundary_constraints, covered_boundary.len());
-    // is it possible to have too few bombs as non-boundary bombs is small
-    if num_non_boundary_covered < total_num_bombs_left {
-        candidates = candidates
-            .into_iter()
-            .filter(|bombs| {
-                let min_bombs = total_num_bombs_left - num_non_boundary_covered;
-                min_bombs <= bombs.count_ones()
-            })
-            .collect_vec();
+    let total_num_bombs_left = board.num_bombs_left() as usize;
+    let num_non_boundary_covered = all_covered.len() - covered_boundary.len();
+    let (num_bombs_counters, mut total_num_bombs_counter, num_scenarios) =
+        legal_scenario_info(&boundary_constraints, covered_boundary.len());
+    let max_bombs = total_num_bombs_left;
+    let min_bombs =
+        total_num_bombs_left.saturating_sub(num_non_boundary_covered);
+    let filter = |num_bombs_counter: &mut [usize; 100]| {
+        for (num_bombs, counter) in num_bombs_counter.iter_mut().enumerate() {
+            if num_bombs < min_bombs || max_bombs < num_bombs {
+                *counter = 0;
+            }
+        }
+    };
+    for mut num_bombs_counter in num_bombs_counters {
+        filter(&mut num_bombs_counter);
     }
-    // it is possible to have too many bombs, as boundary is large
-    if covered_boundary.len() as u32 > total_num_bombs_left {
-        candidates = candidates
-            .into_iter()
-            .filter(|bombs| bombs.count_ones() <= total_num_bombs_left)
-            .collect_vec();
-    }
-    let legal_bomb_cases = candidates;
+    filter(&mut total_num_bombs_counter);
     println!(
-           "Generating legal arrangements of bombs took: {}s ({} scenario(s) from {} tiles)",
+        "Analysing legal scenarios took: {}s ({} scenario(s) from {} tiles)",
         elapsed_time_string(&start),
-           legal_bomb_cases.len(),
-           covered_boundary.len()
-       );
-    let start = Instant::now();
+        num_scenarios,
+        covered_boundary.len()
+    );
 
-    let (min_bombs_omitted, max_bombs_omitted) = {
-        let min_max = legal_bomb_cases
+    let (min_bombs, max_bombs) = {
+        let min_max = total_num_bombs_counter
             .iter()
-            .map(|bombs| total_num_bombs_left - bombs.count_ones())
+            .enumerate()
+            .filter_map(|(num_bombs, &counter)| {
+                (counter > 0).then_some(num_bombs)
+            })
             .minmax();
         match min_max {
             MinMaxResult::MinMax(min, max) => (min, max),
@@ -196,33 +237,21 @@ fn get_high_probability_guess(
             MinMaxResult::NoElements => panic!(),
         }
     };
+    let min_bombs_omitted = total_num_bombs_left - max_bombs;
     let mut total_weights = 0.0;
-    let mut bombs_omitted_count = (0..=99)
-        .map(|num_bombs_omitted| {
-            let weight = if min_bombs_omitted <= num_bombs_omitted
-                && num_bombs_omitted <= max_bombs_omitted
-            {
-                case_weight(
-                    num_bombs_omitted,
-                    num_non_boundary_covered,
-                    min_bombs_omitted,
-                )
-            } else {
-                0.0
-            };
-            (0, weight)
-        })
-        .collect_vec();
-    let weighted_bomb_cases = legal_bomb_cases
-        .iter()
-        .map(|bombs| {
-            let num_bombs_omitted = total_num_bombs_left - bombs.count_ones();
-            let (count, weight) = bombs_omitted_count
-                .get_mut(num_bombs_omitted as usize)
-                .unwrap();
-            *count += 1;
-            total_weights += *weight;
-            (bombs, *weight)
+    let bombs_present_count = (0..=99)
+        .map(|num_bombs| {
+            if !(min_bombs <= num_bombs && num_bombs <= max_bombs) {
+                return (0, 0.0);
+            }
+            let weight = case_weight(
+                total_num_bombs_left - num_bombs,
+                num_non_boundary_covered,
+                min_bombs_omitted,
+            );
+            let count = total_num_bombs_counter[num_bombs];
+            total_weights += weight * count as f64;
+            (count, weight)
         })
         .collect_vec();
 
@@ -231,61 +260,65 @@ fn get_high_probability_guess(
         .iter()
         .enumerate()
         .map(|(i, tile)| {
-            let mask = 1 << i;
-            let unsafe_weights: f64 = weighted_bomb_cases
+            let unsafe_weights: f64 = num_bombs_counters[i]
                 .iter()
-                .filter_map(|(&bombs, weight)| {
-                    (bombs & mask > 0).then_some(weight)
+                .enumerate()
+                .map(|(num_bombs, &count)| {
+                    let weight = bombs_present_count[num_bombs].1;
+                    weight * count as f64
                 })
                 .sum();
             let proportion_safe = 1.0 - unsafe_weights / total_weights;
             (tile, proportion_safe)
         })
-        .max_by(|(_, proportion_safe1), (_, proportion_safe2)| {
-            proportion_safe1.total_cmp(proportion_safe2)
+        .max_by(|(tile1, proportion_safe1), (tile2, proportion_safe2)| {
+            proportion_safe1
+                .total_cmp(proportion_safe2)
+                .then(tile2.cmp(tile1))
         })
         .unwrap();
 
     if num_non_boundary_covered == 0 {
-        println!(
-            "Best odds:                       {:3.1}% -> {:?}",
-            boundary_safety_prob * 100.0,
-            boundary_tile,
-        );
-        println!(
-            "Analysing arrangements of bombs took:        {}s\n",
-            elapsed_time_string(&start),
-        );
+        // println!(
+        //     "Best odds:                       {:>5.1}% -> {:?}",
+        //     boundary_safety_prob * 100.0,
+        //     boundary_tile,
+        // );
         return Action::uncover(*boundary_tile);
     }
 
     // consider if there are better odds for a non-boundary tile
     let non_boundary_safety_prob = {
-        let unsafe_weights: f64 = bombs_omitted_count
+        let unsafe_weights: f64 = bombs_present_count
             .iter()
             .enumerate()
-            .map(|(num_bombs_omitted, &(count, weight))| {
+            .rev()
+            .map(|(num_bombs, &(count, weight))| {
+                if count == 0 {
+                    return 0.0;
+                }
+                let num_bombs_omitted = total_num_bombs_left - num_bombs;
                 count as f64 * weight * num_bombs_omitted as f64
                     / num_non_boundary_covered as f64
             })
             .sum();
         1.0 - unsafe_weights / total_weights
     };
-    println!(
-        "Best odds on boundary:           {:3.1}% -> {:?}",
-        boundary_safety_prob * 100.0,
-        boundary_tile,
-    );
-    println!(
-        "Best odds not on boundary:       {:3.1}%",
-        non_boundary_safety_prob * 100.0,
-    );
+    // println!(
+    //     "Best odds on boundary:           {:>5.1}% -> {:?}",
+    //     boundary_safety_prob * 100.0,
+    //     boundary_tile,
+    // );
+    // println!(
+    //     "Best odds not on boundary:       {:>5.1}%",
+    //     non_boundary_safety_prob * 100.0,
+    // );
     let &best_tile = if boundary_safety_prob > non_boundary_safety_prob {
-        println!(
-            "Best odds are from boundary:     {:3.1}% -> {:?}",
-            boundary_safety_prob * 100.0,
-            boundary_tile,
-        );
+        // println!(
+        //     "Best odds are from boundary:     {:>5.1}% -> {:?}",
+        //     boundary_safety_prob * 100.0,
+        //     boundary_tile,
+        // );
         boundary_tile
     } else {
         // unwrap here because we have already checked non-boundary tiles exist
@@ -294,24 +327,22 @@ fn get_high_probability_guess(
             .filter(|tile| !covered_boundary.contains(tile))
             .min_by_key(|&&tile| {
                 // choose tile that will keep the boundary smallest
-                covered_neighbours(board, tile)
-                    .into_iter()
-                    .filter(|tile| !covered_boundary.contains(tile))
-                    .count()
+                (
+                    covered_neighbours(board, tile)
+                        .into_iter()
+                        .filter(|tile| !covered_boundary.contains(tile))
+                        .count(),
+                    tile,
+                )
             })
             .unwrap();
-        println!(
-            "Best odds are from non-boundary: {:3.1}% -> {:?}",
-            non_boundary_safety_prob * 100.0,
-            non_boundary_tile,
-        );
+        // println!(
+        //     "Best odds are from non-boundary: {:>5.1}% -> {:?}",
+        //     non_boundary_safety_prob * 100.0,
+        //     non_boundary_tile,
+        // );
         non_boundary_tile
     };
-
-    println!(
-        "Analysing arrangements of bombs took:        {}s\n",
-        elapsed_time_string(&start),
-    );
     Action::uncover(best_tile)
 }
 
