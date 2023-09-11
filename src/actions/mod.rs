@@ -92,35 +92,36 @@ pub fn check_player_action(
 }
 
 pub fn check_bot_action(
-    keys: Res<Input<KeyCode>>,
     mut q_board: Query<&mut Board>,
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     agent_state: ResMut<State<AgentState>>,
     app_state: ResMut<State<GameState>>,
     mut q_record: Query<&mut Record>,
-    q_bot_button: Query<&crate::Button, With<BotButton>>,
+    mut q_bot_buttons: Query<(&crate::Button, &BotButton)>,
     mouse: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     mut q_face_buttons: Query<(&mut TextureAtlasSprite, &FaceButton)>,
 ) {
     let mut record = q_record.single_mut();
-    let button = q_bot_button.single();
     let window = q_windows.single();
-    if keys.just_pressed(KeyCode::Space) || button.just_released(window, &mouse)
-    {
-        match agent_state.get() {
-            AgentState::Resting => next_agent_state.set(AgentState::Thinking),
-            AgentState::Thinking => next_agent_state.set(AgentState::Resting),
-        }
-        if !matches!(app_state.get(), GameState::Playing) {
-            restart(q_board, next_app_state, app_state, q_record);
-            next_agent_state.set(AgentState::Thinking);
-            return;
+    for (button, bot_button) in &mut q_bot_buttons {
+        if button.just_released(window, &mouse) {
+            if !matches!(app_state.get(), GameState::Playing) {
+                restart(q_board, next_app_state, app_state, q_record);
+                next_agent_state.set(bot_button.bot_effect);
+                return;
+            }
+            match agent_state.get() {
+                AgentState::Resting => {
+                    next_agent_state.set(bot_button.bot_effect)
+                }
+                _ => next_agent_state.set(AgentState::Resting),
+            }
         }
     }
     let mut board = q_board.single_mut();
-    if matches!(agent_state.get(), AgentState::Thinking) {
+    if !matches!(agent_state.get(), AgentState::Resting) {
         let actions = agent::get_all_actions(&board);
         if actions.is_empty() {
             next_agent_state.set(AgentState::Resting)
@@ -132,7 +133,9 @@ pub fn check_bot_action(
                 &mut next_app_state,
                 &mut record,
             );
-            if result != ActionResult::Continue {
+            if result != ActionResult::Continue
+                || matches!(agent_state.get(), AgentState::ThinkingOneMoveOnly)
+            {
                 next_agent_state.set(AgentState::Resting);
                 return;
             }

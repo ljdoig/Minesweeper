@@ -71,6 +71,7 @@ pub enum AgentState {
     #[default]
     Resting,
     Thinking,
+    ThinkingOneMoveOnly,
 }
 
 #[derive(
@@ -190,6 +191,7 @@ impl Button {
 
 #[derive(Component)]
 pub struct BotButton {
+    bot_effect: AgentState,
     pressed_index: usize,
     unpressed_index: usize,
 }

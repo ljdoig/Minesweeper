@@ -12,10 +12,11 @@ const DIGIT_SPRITE_SIZE: (f32, f32) = (13.0, 23.0);
 
 use crate::{
     board::{Board, TileState},
-    BombCounterDigit, BotButton, Difficulty, FaceButton, Record, TilePos,
+    AgentState, BombCounterDigit, BotButton, Difficulty, FaceButton, Record,
+    TilePos,
 };
 
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Clone)]
 pub struct UISizing {
     pub window_size: (f32, f32),
     pub board_size: (f32, f32),
@@ -147,6 +148,12 @@ fn setup_game(
         difficulty,
         &ui_sizing,
     );
+    spawn_padding(commands, &asset_server, &ui_sizing);
+    // pretty cramped on easy, so scale down buttons and display
+    let mut ui_sizing = (*ui_sizing).clone();
+    if matches!(difficulty, Difficulty::Easy) {
+        ui_sizing.scale /= 1.5;
+    }
     spawn_buttons(commands, &asset_server, &mut texture_atlases, &ui_sizing);
     spawn_bomb_display(
         commands,
@@ -154,7 +161,6 @@ fn setup_game(
         &mut texture_atlases,
         &ui_sizing,
     );
-    spawn_padding(commands, &asset_server, &ui_sizing);
     commands.spawn(Record::new(difficulty));
 }
 
@@ -238,7 +244,7 @@ fn spawn_buttons(
     let size = 1.5 * TILE_SPRITE_SIZE;
     let transform = Transform {
         translation: Vec3::new(
-            (window_size.0 - 2.0 * edge_padding) * 0.35,
+            (window_size.0 - 2.0 * edge_padding) * 0.3,
             (window_size.1 - top_padding) / 2.0,
             1.0,
         ),
@@ -253,6 +259,45 @@ fn spawn_buttons(
             ..default()
         },
         BotButton {
+            bot_effect: AgentState::Thinking,
+            unpressed_index: 0,
+            pressed_index: 1,
+        },
+        crate::Button {
+            location: Rect::from_center_size(
+                transform.translation.truncate(),
+                Vec2::splat(size * scale),
+            ),
+        },
+    ));
+    let texture_handle = asset_server.load("spritesheets/bot_one_tiles.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::splat(BOT_SPRITE_SIZE),
+        2,
+        1,
+        None,
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let transform = Transform {
+        translation: Vec3::new(
+            (window_size.0 - 2.0 * edge_padding) * 0.4,
+            (window_size.1 - top_padding) / 2.0,
+            1.0,
+        ),
+        scale: Vec3::splat(size * scale / BOT_SPRITE_SIZE),
+        ..default()
+    };
+    commands.spawn((
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(0),
+            transform,
+            ..default()
+        },
+        BotButton {
+            bot_effect: AgentState::ThinkingOneMoveOnly,
             unpressed_index: 0,
             pressed_index: 1,
         },
