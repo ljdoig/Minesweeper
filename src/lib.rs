@@ -1,6 +1,7 @@
 use bevy::window::PrimaryWindow;
 use bevy::{prelude::*, window::close_on_esc};
 use instant::Instant;
+use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::fmt::{self, Display, Formatter};
@@ -39,14 +40,12 @@ impl Plugin for GamePlugin {
             .add_state::<AgentState>()
             .add_state::<Difficulty>()
             .add_systems(Startup, setup)
-            .add_systems(
-                Update,
-                (check_bot_action, close_on_esc, check_button_press),
-            )
+            .add_systems(First, (update_bot_buttons, update_face_buttons))
+            .add_systems(Update, (check_bot_action, close_on_esc))
             .add_systems(
                 Update,
                 check_player_action.run_if(
-                    in_state(GameState::Game)
+                    in_state(GameState::Playing)
                         .and_then(in_state(AgentState::Resting)),
                 ),
             )
@@ -62,8 +61,9 @@ impl Plugin for GamePlugin {
 #[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 pub enum GameState {
     #[default]
-    Game,
-    GameOver,
+    Playing,
+    Won,
+    Lost,
 }
 
 #[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
@@ -154,33 +154,9 @@ impl Display for Record {
     }
 }
 
-fn tile_sheet_index(state: TileState) -> usize {
-    match state {
-        TileState::Covered => 0,
-        TileState::Flagged => 1,
-        TileState::UncoveredBomb => 2,
-        TileState::UncoveredSafe(n) => 3 + n as usize,
-        TileState::Misflagged => 12,
-        TileState::ExplodedBomb => 13,
-    }
-}
-
-fn digit_sheet_index(c: char) -> usize {
-    if let Some(x) = c.to_digit(10) {
-        return x as usize;
-    }
-    match c {
-        '-' => 10,
-        ' ' => 11,
-        _ => panic!(),
-    }
-}
-
 #[derive(Component)]
 pub struct Button {
     location: Rect,
-    pressed_index: usize,
-    unpressed_index: usize,
 }
 
 impl Button {
@@ -213,27 +189,90 @@ impl Button {
 }
 
 #[derive(Component)]
-pub struct BotButton;
+pub struct BotButton {
+    pressed_index: usize,
+    unpressed_index: usize,
+}
 
 #[derive(Component)]
 pub struct FaceButton(Difficulty);
 
-fn check_button_press(
+impl FaceButton {
+    fn sheet_index(&self, state: FaceButtonState) -> usize {
+        let difficulty = self.0;
+        let offset = Difficulty::iter()
+            .find_position(|x| **x == difficulty)
+            .unwrap()
+            .0
+            * 5;
+        offset
+            + match state {
+                FaceButtonState::Unpressed => 0,
+                FaceButtonState::Pressed => 1,
+                FaceButtonState::Playing => 2,
+                FaceButtonState::Win => 3,
+                FaceButtonState::Loss => 4,
+            }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum FaceButtonState {
+    Unpressed,
+    Pressed,
+    Playing,
+    Win,
+    Loss,
+}
+
+fn update_bot_buttons(
+    mut q_buttons: Query<(&mut TextureAtlasSprite, &Button, &BotButton)>,
     mouse: Res<Input<MouseButton>>,
-    mut q_buttons: Query<(&mut TextureAtlasSprite, &Button)>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let window = q_windows.single();
-    for (mut sprite, button) in q_buttons.iter_mut() {
-        sprite.index = button.unpressed_index;
-        if button.pressed(window, &mouse) {
-            sprite.index = button.pressed_index;
+    for (mut sprite, button, bot_button) in q_buttons.iter_mut() {
+        sprite.index = bot_button.unpressed_index;
+        if button.pressed(q_windows.single(), &mouse) {
+            sprite.index = bot_button.pressed_index;
         }
+    }
+}
+
+fn update_face_buttons(
+    mut q_face_buttons: Query<(&mut TextureAtlasSprite, &Button, &FaceButton)>,
+    app_state: ResMut<State<GameState>>,
+    mouse: Res<Input<MouseButton>>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    for (mut sprite, button, face_button) in q_face_buttons.iter_mut() {
+        let face_button_state = if button.pressed(q_windows.single(), &mouse) {
+            FaceButtonState::Pressed
+        } else {
+            match app_state.get() {
+                GameState::Won => FaceButtonState::Win,
+                GameState::Lost => FaceButtonState::Loss,
+                GameState::Playing => FaceButtonState::Unpressed,
+            }
+        };
+        sprite.index = face_button.sheet_index(face_button_state)
     }
 }
 
 #[derive(Component)]
 pub struct BombCounterDigit;
+
+impl BombCounterDigit {
+    fn sheet_index(c: char) -> usize {
+        if let Some(x) = c.to_digit(10) {
+            return x as usize;
+        }
+        match c {
+            '-' => 10,
+            ' ' => 11,
+            _ => panic!(),
+        }
+    }
+}
 
 fn sync_bomb_counter(
     q_board: Query<&Board>,
@@ -242,7 +281,7 @@ fn sync_bomb_counter(
     if let Ok(board) = q_board.get_single() {
         format!("{:#03}", board.num_bombs_left())
             .chars()
-            .map(digit_sheet_index)
+            .map(BombCounterDigit::sheet_index)
             .zip(q_digits.iter_mut())
             .for_each(|(index, (mut sprite, _))| {
                 sprite.index = index;
@@ -258,6 +297,10 @@ fn sync_board_with_tile_sprites(
     mouse: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     ui_sizing: Res<UISizing>,
+    mut q_face_buttons: Query<
+        (&mut TextureAtlasSprite, &FaceButton),
+        Without<TilePos>,
+    >,
 ) {
     if let Ok(board) = q_board.get_single() {
         // check if mouse is down over a tile
@@ -271,17 +314,21 @@ fn sync_board_with_tile_sprites(
         for (mut sprite, &pos) in &mut q_tile_sprites {
             let tile_state = board.tile_state(pos);
             if let Some(pressed_pos) = pressed {
-                if matches!(app_state.get(), GameState::Game)
+                if matches!(app_state.get(), GameState::Playing)
                     && matches!(tile_state, TileState::Covered)
                     && matches!(**agent_state, AgentState::Resting)
                     && pos == pressed_pos
                 {
-                    let index = tile_sheet_index(TileState::UncoveredSafe(0));
+                    let index = TileState::UncoveredSafe(0).sheet_index();
                     sprite.index = index;
+                    for (mut sprite, button) in &mut q_face_buttons {
+                        sprite.index =
+                            button.sheet_index(FaceButtonState::Playing);
+                    }
                     continue;
                 }
             }
-            let index = tile_sheet_index(tile_state);
+            let index = tile_state.sheet_index();
             sprite.index = index;
         }
     }

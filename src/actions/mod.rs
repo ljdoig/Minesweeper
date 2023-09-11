@@ -3,7 +3,8 @@ use bevy::{prelude::*, window::PrimaryWindow};
 use crate::{
     board::{Action, ActionResult, ActionType, Board, TileState},
     setup::UISizing,
-    AgentState, BotButton, Difficulty, FaceButton, GameState, Record,
+    AgentState, BotButton, Difficulty, FaceButton, FaceButtonState, GameState,
+    Record,
 };
 
 pub mod agent;
@@ -20,10 +21,10 @@ pub fn restart(
         return;
     }
     let mut record = q_record.single_mut();
-    if matches!(app_state.get(), GameState::Game) {
+    if matches!(app_state.get(), GameState::Playing) {
         end_game(&mut record, &ActionResult::Continue, &board);
     } else {
-        next_app_state.set(GameState::Game);
+        next_app_state.set(GameState::Playing);
     }
     board.reset(None);
 }
@@ -34,18 +35,18 @@ pub fn check_restart(
     mut next_app_state: ResMut<NextState<GameState>>,
     mut next_agent_state: ResMut<NextState<AgentState>>,
     app_state: ResMut<State<GameState>>,
-    q_face_buttons: Query<(&FaceButton, &crate::Button)>,
+    mut q_face_buttons: Query<(&FaceButton, &crate::Button)>,
     mouse: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     q_board: Query<&mut Board>,
     q_record: Query<&mut Record>,
 ) {
-    for (&FaceButton(new_difficulty), button) in q_face_buttons.into_iter() {
+    for (&FaceButton(new_difficulty), button) in &mut q_face_buttons {
         if button.just_released(q_windows.single(), &mouse) {
             next_agent_state.set(AgentState::Resting);
             if new_difficulty != **difficulty {
                 next_difficulty.set(new_difficulty);
-                next_app_state.set(GameState::Game);
+                next_app_state.set(GameState::Playing);
             } else {
                 restart(q_board, next_app_state, app_state, q_record);
             }
@@ -101,6 +102,7 @@ pub fn check_bot_action(
     q_bot_button: Query<&crate::Button, With<BotButton>>,
     mouse: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
+    mut q_face_buttons: Query<(&mut TextureAtlasSprite, &FaceButton)>,
 ) {
     let mut record = q_record.single_mut();
     let button = q_bot_button.single();
@@ -111,7 +113,7 @@ pub fn check_bot_action(
             AgentState::Resting => next_agent_state.set(AgentState::Thinking),
             AgentState::Thinking => next_agent_state.set(AgentState::Resting),
         }
-        if matches!(app_state.get(), GameState::GameOver) {
+        if !matches!(app_state.get(), GameState::Playing) {
             restart(q_board, next_app_state, app_state, q_record);
             next_agent_state.set(AgentState::Thinking);
             return;
@@ -134,6 +136,9 @@ pub fn check_bot_action(
                 next_agent_state.set(AgentState::Resting);
                 return;
             }
+        }
+        for (mut sprite, button) in &mut q_face_buttons {
+            sprite.index = button.sheet_index(FaceButtonState::Playing);
         }
     }
 }
@@ -167,9 +172,13 @@ fn complete_action(
 ) -> ActionResult {
     let result = board.apply_action(action);
     match result {
-        ActionResult::Win | ActionResult::Lose => {
+        ActionResult::Win => {
             end_game(record, &result, board);
-            next_app_state.set(GameState::GameOver);
+            next_app_state.set(GameState::Won);
+        }
+        ActionResult::Lose => {
+            end_game(record, &result, board);
+            next_app_state.set(GameState::Lost);
         }
         ActionResult::Continue => {}
     }

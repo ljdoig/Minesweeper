@@ -46,6 +46,19 @@ pub enum TileState {
     Misflagged,
 }
 
+impl TileState {
+    pub fn sheet_index(&self) -> usize {
+        match self {
+            TileState::Covered => 0,
+            TileState::Flagged => 1,
+            TileState::UncoveredBomb => 2,
+            TileState::UncoveredSafe(n) => 3 + *n as usize,
+            TileState::Misflagged => 12,
+            TileState::ExplodedBomb => 13,
+        }
+    }
+}
+
 #[derive(
     Component, Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord,
 )]

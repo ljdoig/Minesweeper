@@ -12,8 +12,7 @@ const DIGIT_SPRITE_SIZE: (f32, f32) = (13.0, 23.0);
 
 use crate::{
     board::{Board, TileState},
-    tile_sheet_index, BombCounterDigit, BotButton, Difficulty, FaceButton,
-    Record, TilePos,
+    BombCounterDigit, BotButton, Difficulty, FaceButton, Record, TilePos,
 };
 
 #[derive(Resource, Debug)]
@@ -194,8 +193,7 @@ fn spawn_board(
             for col in 0..width {
                 for row in 0..height {
                     let tile_sprite = TilePos { col, row };
-                    let sprite_sheet_index =
-                        tile_sheet_index(TileState::Covered);
+                    let sprite_sheet_index = TileState::Covered.sheet_index();
                     parent.spawn((
                         SpriteSheetBundle {
                             texture_atlas: texture_atlas_handle.clone(),
@@ -254,14 +252,15 @@ fn spawn_buttons(
             transform,
             ..default()
         },
-        BotButton,
+        BotButton {
+            unpressed_index: 0,
+            pressed_index: 1,
+        },
         crate::Button {
             location: Rect::from_center_size(
                 transform.translation.truncate(),
                 Vec2::splat(size * scale),
             ),
-            pressed_index: 1,
-            unpressed_index: 0,
         },
     ));
     let texture_handle = asset_server.load("spritesheets/faces.png");
@@ -276,22 +275,21 @@ fn spawn_buttons(
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
     let transform = Transform {
         translation: Vec3::Y * (window_size.1 - top_padding) / 2.0,
-        scale: Vec3::splat(scale * TILE_SPRITE_SIZE / FACE_SPRITE_SIZE),
+        scale: Vec3::splat(1.25 * scale * TILE_SPRITE_SIZE / FACE_SPRITE_SIZE),
         ..default()
     };
     commands
         .spawn(SpatialBundle::from_transform(transform))
         .with_children(|parent| {
-            let face_spacing = Vec3::X * FACE_SPRITE_SIZE * 1.25;
+            let face_spacing = Vec3::X * FACE_SPRITE_SIZE * 1.1;
             for (i, &difficulty) in Difficulty::iter().enumerate() {
                 let child_transform = Transform::from_translation(
                     face_spacing * (i as isize - 1) as f32,
                 );
-                let spritesheet_offset = 5 * i;
                 let new_digit = (
                     SpriteSheetBundle {
                         texture_atlas: texture_atlas_handle.clone(),
-                        sprite: TextureAtlasSprite::new(spritesheet_offset),
+                        sprite: TextureAtlasSprite::new(0),
                         transform: child_transform,
                         ..default()
                     },
@@ -303,8 +301,6 @@ fn spawn_buttons(
                                 .truncate(),
                             Vec2::splat(TILE_SPRITE_SIZE * scale),
                         ),
-                        pressed_index: spritesheet_offset + 1,
-                        unpressed_index: spritesheet_offset,
                     },
                 );
                 parent.spawn(new_digit);
