@@ -59,7 +59,7 @@ pub fn get_all_actions(board: &Board) -> Vec<Action> {
     deduplicate(output)
 }
 
-pub fn get_trivial_actions(board: &Board) -> Vec<Action> {
+ fn get_trivial_actions(board: &Board) -> Vec<Action> {
     let mut output = vec![];
     if board.tile_states().iter().all(|&x| x == TileState::Covered) {
         // first guess

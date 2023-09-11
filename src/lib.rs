@@ -4,6 +4,7 @@ use instant::Instant;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::fmt::{self, Display, Formatter};
+use std::slice::Iter;
 
 // redirect println! to console.log in wasm
 #[cfg(target_family = "wasm")]
@@ -38,10 +39,9 @@ impl Plugin for GamePlugin {
             .add_state::<AgentState>()
             .add_state::<Difficulty>()
             .add_systems(Startup, setup)
-            .add_systems(Update, close_on_esc)
             .add_systems(
                 Update,
-                check_bot_action.run_if(in_state(GameState::Game)),
+                (check_bot_action, close_on_esc, check_button_press),
             )
             .add_systems(
                 Update,
@@ -50,8 +50,8 @@ impl Plugin for GamePlugin {
                         .and_then(in_state(AgentState::Resting)),
                 ),
             )
-            .add_systems(PostUpdate, (check_restart, check_change_difficulty))
-            .add_systems(PostUpdate, resize.after(check_change_difficulty))
+            .add_systems(PostUpdate, check_restart)
+            .add_systems(PostUpdate, resize.after(check_restart))
             .add_systems(
                 Last,
                 (sync_board_with_tile_sprites, sync_bomb_counter),
@@ -90,6 +90,12 @@ impl Display for Difficulty {
 }
 
 impl Difficulty {
+    pub fn iter() -> Iter<'static, Difficulty> {
+        static VALS: [Difficulty; 3] =
+            [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+        VALS.iter()
+    }
+
     pub fn num_bombs(&self) -> usize {
         match self {
             Difficulty::Easy => 10,
@@ -152,10 +158,10 @@ fn tile_sheet_index(state: TileState) -> usize {
     match state {
         TileState::Covered => 0,
         TileState::Flagged => 1,
-        TileState::ExplodedBomb => 14,
         TileState::UncoveredBomb => 2,
         TileState::UncoveredSafe(n) => 3 + n as usize,
-        TileState::Misflagged => 13,
+        TileState::Misflagged => 12,
+        TileState::ExplodedBomb => 13,
     }
 }
 
@@ -171,21 +177,76 @@ fn digit_sheet_index(c: char) -> usize {
 }
 
 #[derive(Component)]
+pub struct Button {
+    location: Rect,
+    pressed_index: usize,
+    unpressed_index: usize,
+}
+
+impl Button {
+    fn pressed(
+        &self,
+        window: &Window,
+        mouse: &Res<Input<MouseButton>>,
+    ) -> bool {
+        mouse.pressed(MouseButton::Left) && self.mouse_over(window)
+    }
+
+    fn just_released(
+        &self,
+        window: &Window,
+        mouse: &Res<Input<MouseButton>>,
+    ) -> bool {
+        mouse.just_released(MouseButton::Left) && self.mouse_over(window)
+    }
+
+    fn mouse_over(&self, window: &Window) -> bool {
+        if let Some(mouse_from_corner) = window.cursor_position() {
+            let centre = Vec2::new(window.width(), window.height()) / 2.0;
+            let mouse_pos = (mouse_from_corner - centre) * Vec2::new(1.0, -1.0);
+            if self.location.contains(mouse_pos) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+#[derive(Component)]
+pub struct BotButton;
+
+#[derive(Component)]
+pub struct FaceButton(Difficulty);
+
+fn check_button_press(
+    mouse: Res<Input<MouseButton>>,
+    mut q_buttons: Query<(&mut TextureAtlasSprite, &Button)>,
+    q_windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = q_windows.single();
+    for (mut sprite, button) in q_buttons.iter_mut() {
+        sprite.index = button.unpressed_index;
+        if button.pressed(window, &mouse) {
+            sprite.index = button.pressed_index;
+        }
+    }
+}
+
+#[derive(Component)]
 pub struct BombCounterDigit;
 
 fn sync_bomb_counter(
     q_board: Query<&Board>,
-    mut digits: Query<(&mut TextureAtlasSprite, &BombCounterDigit)>,
+    mut q_digits: Query<(&mut TextureAtlasSprite, &BombCounterDigit)>,
 ) {
     if let Ok(board) = q_board.get_single() {
-        let display_string = format!("{:#03}", board.num_bombs_left());
-        let iter = display_string
+        format!("{:#03}", board.num_bombs_left())
             .chars()
             .map(digit_sheet_index)
-            .zip(digits.iter_mut());
-        for (index, (mut sprite, _)) in iter {
-            sprite.index = index;
-        }
+            .zip(q_digits.iter_mut())
+            .for_each(|(index, (mut sprite, _))| {
+                sprite.index = index;
+            });
     }
 }
 
@@ -194,14 +255,14 @@ fn sync_board_with_tile_sprites(
     mut q_tile_sprites: Query<(&mut TextureAtlasSprite, &TilePos)>,
     app_state: ResMut<State<GameState>>,
     agent_state: Res<State<AgentState>>,
-    buttons: Res<Input<MouseButton>>,
+    mouse: Res<Input<MouseButton>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     ui_sizing: Res<UISizing>,
 ) {
     if let Ok(board) = q_board.get_single() {
         // check if mouse is down over a tile
         let mut pressed = None;
-        if buttons.pressed(MouseButton::Left) {
+        if mouse.pressed(MouseButton::Left) {
             if let Some(position) = q_windows.single().cursor_position() {
                 pressed = ui_sizing.clicked_tile_pos(position);
             }
@@ -254,8 +315,8 @@ pub fn simulate_n_games(n: usize, difficulty: Difficulty, seed: u64) {
             board.seed()
         );
         println!(
-            "{:.2}s per game, {:.2}s in total, longest game took {:.2}s",
-            start.elapsed().as_secs_f32() / i as f32,
+            "{}ms per game, {:.2}s in total, longest game took {:.2}s",
+            (1000.0 * start.elapsed().as_secs_f32() / i as f32) as usize,
             start.elapsed().as_secs_f32(),
             longest_game,
         );

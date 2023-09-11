@@ -136,8 +136,6 @@ impl Board {
         // Set board seed randomly if it is not supplied
         self.seed = seed.unwrap_or(rand::thread_rng().gen());
 
-        // self.seed = 5913895412333589340;
-
         let mut rng: StdRng = SeedableRng::seed_from_u64(self.seed);
         // Randomly sample grid tiles without replacement
         let sample =
@@ -203,7 +201,7 @@ impl Board {
             self.seed += 1;
             self.sample_bombs(Some(self.seed));
         }
-        println!("Board seed: {}\n", self.seed);
+        println!("Board seed: {}", self.seed);
         self.uncover_safe(pos);
     }
 

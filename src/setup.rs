@@ -6,11 +6,14 @@ const WINDOW_HEIGHT: f32 = 700.0;
 const TILE_SPRITE_SIZE: f32 = 16.0;
 const EDGE_PADDING_SPRITE_SIZE: f32 = 12.0;
 const TOP_PADDING_SPRITE_SIZE: f32 = 60.0;
+const BOT_SPRITE_SIZE: f32 = 384.0;
+const FACE_SPRITE_SIZE: f32 = 24.0;
 const DIGIT_SPRITE_SIZE: (f32, f32) = (13.0, 23.0);
 
 use crate::{
     board::{Board, TileState},
-    tile_sheet_index, BombCounterDigit, Difficulty, Record, TilePos,
+    tile_sheet_index, BombCounterDigit, BotButton, Difficulty, FaceButton,
+    Record, TilePos,
 };
 
 #[derive(Resource, Debug)]
@@ -145,6 +148,7 @@ fn setup_game(
         difficulty,
         &ui_sizing,
     );
+    spawn_buttons(commands, &asset_server, &mut texture_atlases, &ui_sizing);
     spawn_bomb_display(
         commands,
         &asset_server,
@@ -211,6 +215,103 @@ fn spawn_board(
         });
 }
 
+fn spawn_buttons(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+    &UISizing {
+        window_size,
+        top_padding,
+        edge_padding,
+        scale,
+        ..
+    }: &UISizing,
+) {
+    let texture_handle = asset_server.load("spritesheets/bot_tiles.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::splat(BOT_SPRITE_SIZE),
+        2,
+        1,
+        None,
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let size = 1.5 * TILE_SPRITE_SIZE;
+    let transform = Transform {
+        translation: Vec3::new(
+            (window_size.0 - 2.0 * edge_padding) * 0.35,
+            (window_size.1 - top_padding) / 2.0,
+            1.0,
+        ),
+        scale: Vec3::splat(size * scale / BOT_SPRITE_SIZE),
+        ..default()
+    };
+    commands.spawn((
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(0),
+            transform,
+            ..default()
+        },
+        BotButton,
+        crate::Button {
+            location: Rect::from_center_size(
+                transform.translation.truncate(),
+                Vec2::splat(size * scale),
+            ),
+            pressed_index: 1,
+            unpressed_index: 0,
+        },
+    ));
+    let texture_handle = asset_server.load("spritesheets/faces.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::splat(FACE_SPRITE_SIZE),
+        5,
+        3,
+        None,
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let transform = Transform {
+        translation: Vec3::Y * (window_size.1 - top_padding) / 2.0,
+        scale: Vec3::splat(scale * TILE_SPRITE_SIZE / FACE_SPRITE_SIZE),
+        ..default()
+    };
+    commands
+        .spawn(SpatialBundle::from_transform(transform))
+        .with_children(|parent| {
+            let face_spacing = Vec3::X * FACE_SPRITE_SIZE * 1.25;
+            for (i, &difficulty) in Difficulty::iter().enumerate() {
+                let child_transform = Transform::from_translation(
+                    face_spacing * (i as isize - 1) as f32,
+                );
+                let spritesheet_offset = 5 * i;
+                let new_digit = (
+                    SpriteSheetBundle {
+                        texture_atlas: texture_atlas_handle.clone(),
+                        sprite: TextureAtlasSprite::new(spritesheet_offset),
+                        transform: child_transform,
+                        ..default()
+                    },
+                    FaceButton(difficulty),
+                    crate::Button {
+                        location: Rect::from_center_size(
+                            (transform * child_transform)
+                                .translation
+                                .truncate(),
+                            Vec2::splat(TILE_SPRITE_SIZE * scale),
+                        ),
+                        pressed_index: spritesheet_offset + 1,
+                        unpressed_index: spritesheet_offset,
+                    },
+                );
+                parent.spawn(new_digit);
+            }
+        });
+}
+
 fn spawn_bomb_display(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
@@ -218,6 +319,7 @@ fn spawn_bomb_display(
     &UISizing {
         window_size,
         top_padding,
+        edge_padding,
         scale,
         ..
     }: &UISizing,
@@ -233,7 +335,11 @@ fn spawn_bomb_display(
     );
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
     let transform = Transform {
-        translation: Vec3::new(0.0, (window_size.1 - top_padding) / 2.0, 1.0),
+        translation: Vec3::new(
+            -(window_size.0 - 2.0 * edge_padding) * 0.35,
+            (window_size.1 - top_padding) / 2.0,
+            1.0,
+        ),
         scale: Vec3::splat(scale),
         ..default()
     };
