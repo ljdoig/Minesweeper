@@ -70,7 +70,7 @@ fn validate_final(
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn tile_vec_to_u128(
@@ -86,7 +86,7 @@ fn tile_vec_to_u128(
     tracker
 }
 
-fn get_boundary_constraints(
+fn boundary_constraints(
     board: &Board,
     covered_boundary: &[TilePos],
 ) -> Vec<(u8, u128)> {
@@ -109,15 +109,11 @@ fn get_boundary_constraints(
         .collect()
 }
 
-fn elapsed_time_string(instant: &Instant) -> String {
-    let str = format!("{:3.3}", instant.elapsed().as_secs_f32());
-    format!("{:>7}", str)
-}
-
 fn legal_scenario_info(
     boundary_constraints: &Vec<(u8, u128)>,
     boundary_size: usize,
-) -> ([[usize; 100]; 128], [usize; 100], usize) {
+) -> ([[usize; 100]; 128], [usize; 100]) {
+    let start = Instant::now();
     let mut nbits_left = boundary_size;
     let mut bins = vec![];
     let nbins = if boundary_size <= 32 { 2 } else { 8 };
@@ -161,10 +157,11 @@ fn legal_scenario_info(
     let (bin2, mask2) = bins.pop().unwrap();
     assert_eq!(boundary_size, (mask1 | mask2).count_ones() as usize);
     assert_eq!(0, mask1 & mask2);
-    let merging_constraints = boundary_constraints
+    let boundary_constraints = boundary_constraints
         .iter()
         .cloned()
         .filter(|(_, subset)| subset & mask1 > 0 && subset & mask2 > 0)
+        .unique()
         .collect_vec();
 
     let mut num_bombs_counters = [[0; 100]; 128];
@@ -172,7 +169,7 @@ fn legal_scenario_info(
     let mut num_scenarios = 0;
     for (subset1, subset2) in bin1.iter().cartesian_product(bin2) {
         let bomb_subset = subset1 | subset2;
-        if validate_final(bomb_subset, &merging_constraints) {
+        if validate_final(bomb_subset, &boundary_constraints) {
             num_scenarios += 1;
             let num_bombs = bomb_subset.count_ones() as usize;
             for (i, num_bombs_counters) in
@@ -182,10 +179,18 @@ fn legal_scenario_info(
                     num_bombs_counters[num_bombs] += 1;
                 }
             }
+
             total_num_bombs_counter[num_bombs] += 1;
         }
     }
-    (num_bombs_counters, total_num_bombs_counter, num_scenarios)
+
+    println!(
+        "Analysing legal scenarios took: {:>6.2}s ({:.1e} scenario(s) from {:>2} tiles)",
+        start.elapsed().as_secs_f32(),
+        num_scenarios,
+        boundary_size,
+    );
+    (num_bombs_counters, total_num_bombs_counter)
 }
 
 fn get_high_probability_guess(
@@ -194,13 +199,11 @@ fn get_high_probability_guess(
     board: &Board,
 ) -> Action {
     // generate and test possible bombs positions around boundary
-    let start = Instant::now();
     let covered_boundary = sensible_ordering(covered_boundary);
-    let boundary_constraints =
-        get_boundary_constraints(board, &covered_boundary);
+    let boundary_constraints = boundary_constraints(board, &covered_boundary);
     let total_num_bombs_left = board.num_bombs_left() as usize;
     let num_non_boundary_covered = all_covered.len() - covered_boundary.len();
-    let (num_bombs_counters, mut total_num_bombs_counter, num_scenarios) =
+    let (num_bombs_counters, mut total_num_bombs_counter) =
         legal_scenario_info(&boundary_constraints, covered_boundary.len());
     let max_bombs = total_num_bombs_left;
     let min_bombs =
@@ -216,12 +219,6 @@ fn get_high_probability_guess(
         filter(&mut num_bombs_counter);
     }
     filter(&mut total_num_bombs_counter);
-    println!(
-        "Analysing legal scenarios took: {}s ({} scenario(s) from {} tiles)",
-        elapsed_time_string(&start),
-        num_scenarios,
-        covered_boundary.len()
-    );
 
     let (min_bombs, max_bombs) = {
         let min_max = total_num_bombs_counter
